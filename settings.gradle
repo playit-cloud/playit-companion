@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+        maven {
+            url = "https://repo.papermc.io/repository/maven-public/"
+        }
+    }
+}
+
+include("core")
+include("mod")
+include("plugin")
+
+rootProject.name = "playit-companion"

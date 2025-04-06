@@ -1,0 +1,22 @@
+plugins {
+    id 'java'
+}
+
+group = 'gg.playit'
+version = rootProject.version
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'io.netty:netty-all:4.1.25.Final'
+    implementation 'com.google.code.gson:gson:2.12.1'
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
