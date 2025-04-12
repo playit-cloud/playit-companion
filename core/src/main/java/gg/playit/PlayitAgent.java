@@ -1,11 +1,11 @@
 package gg.playit;
 
-import com.google.gson.Gson;
 import gg.playit.proto.control.AgentSessionId;
 import gg.playit.proto.control.c2s.AgentKeepAliveControlRequest;
 import gg.playit.proto.control.c2s.ControlRpcRequest;
 import gg.playit.proto.control.c2s.PingControlRequest;
 import gg.playit.proto.control.s2c.*;
+import gg.playit.proto.rest.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -24,10 +24,6 @@ import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -40,22 +36,8 @@ public class PlayitAgent implements Closeable {
         Accepted
     }
 
-    private record ClaimSetupRequest(String code, String agent_type, String version) {}
-    private record ClaimSetupResponse(String status, String data) {}
-    private record ClaimExchangeRequest(String code) {}
-    private record ClaimExchangeResponse(String status, ClaimExchangeResponseInner data) {}
-    private record ClaimExchangeResponseInner(String secret_key) {}
-    private record AgentRoutingGetResponse(String status, AgentRoutingGetResponseInner data) {}
-    private record AgentRoutingGetResponseInner(String agent_id, List<String> targets4, List<String> targets6, boolean disable_ip6) {}
-    private record ProtoRegisterRequest(PlayitAgentVersion agent_version, String client_addr, String tunnel_addr) {}
-    private record PlayitAgentVersion(AgentVersion version, boolean official, String details_website) {}
-    private record AgentVersion(String platform, String version, boolean has_expired) {}
-    private record ProtoRegisterResponse(String status, ProtoRegisterResponseInner data) {}
-    private record ProtoRegisterResponseInner(String key) {}
-
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ApiClient apiClient = new ApiClient();
     private final NioEventLoopGroup group = new NioEventLoopGroup();
-    private final Gson gson = new Gson();
 
     private final Timer timer = new HashedWheelTimer();
 
@@ -69,6 +51,7 @@ public class PlayitAgent implements Closeable {
 
     public PlayitAgent(String secretKey) {
         this.secretKey = secretKey;
+        apiClient.setAgentKey(secretKey);
     }
 
     public String getClaimCode() {
@@ -79,60 +62,49 @@ public class PlayitAgent implements Closeable {
     public ClaimStep claimStep() throws IOException, InterruptedException {
         if (claimCode == null)
             return secretKey == null ? ClaimStep.Rejected : ClaimStep.Accepted;
-        var claimSetupReq = HttpRequest.newBuilder(URI.create("https://api.playit.gg/claim/setup"))
-                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(new ClaimSetupRequest(claimCode, "self-managed", "playit-companion 0.1.0")))) // TODO: gradlery to replace version
-                .setHeader("Content-Type", "application/json")
-                .build();
-        var claimSetupResp = httpClient.send(claimSetupReq, HttpResponse.BodyHandlers.ofString());
-        var resp = gson.fromJson(claimSetupResp.body(), ClaimSetupResponse.class);
-        switch (resp.data) {
-            case "WaitingForUserVisit":
-            case "WaitingForUser":
+        var resp = apiClient.claimSetup(claimCode, "self-managed", "playit-companion 0.1.0"); // TODO: gradlery to replace version
+        if (!(resp instanceof ClaimSetupResponse))
+            throw new IOException("claim setup error: " + resp.toString());
+        switch (((ClaimSetupResponse) resp)) {
+            case WaitingForUserVisit:
+            case WaitingForUser:
                 return ClaimStep.NotDone;
-            case "UserRejected":
+            case UserRejected:
                 claimCode = null;
                 return ClaimStep.Rejected;
-            case "UserAccepted":
+            case UserAccepted:
                 break;
-            default:
-                throw new IOException("Bad step type?");
         }
-        var claimExchangeReq = HttpRequest.newBuilder(URI.create("https://api.playit.gg/claim/exchange"))
-                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(new ClaimExchangeRequest(claimCode))))
-                .setHeader("Content-Type", "application/json")
-                .build();
-        var claimExchangeResp = httpClient.send(claimExchangeReq, HttpResponse.BodyHandlers.ofString());
-        var exchangeResp = gson.fromJson(claimExchangeResp.body(), ClaimExchangeResponse.class);
+        var exchangeResp = apiClient.claimExchange(claimCode);
+        if (!(exchangeResp instanceof ClaimExchangeResponse))
+            throw new IOException("claim exchange error: " + exchangeResp.toString());
         // TODO: save secret to file
-        secretKey = exchangeResp.data.secret_key;
+        secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key();
         System.out.println(secretKey);
+        apiClient.setAgentKey(secretKey);
         claimCode = null;
         return ClaimStep.Accepted;
     }
 
     public void run(BiConsumer<InetSocketAddress, NioSocketChannel> connector) throws IOException, InterruptedException {
-        var agentRoutingGetReq = HttpRequest.newBuilder(URI.create("https://api.playit.gg/agents/routing/get"))
-                .POST(HttpRequest.BodyPublishers.ofString("{}"))
-                .setHeader("Content-Type", "application/json")
-                .setHeader("Authorization", "Agent-Key " + secretKey)
-                .build();
-        var agentRoutingGetResp = httpClient.send(agentRoutingGetReq, HttpResponse.BodyHandlers.ofString());
-        var resp = gson.fromJson(agentRoutingGetResp.body(), AgentRoutingGetResponse.class);
+        var resp = apiClient.agentsRoutingGet();
+        if (!(resp instanceof AgentRoutingGetResponse))
+            throw new IOException("agent routing error: " + resp.toString());
         System.out.println(resp);
         List<InetSocketAddress> addrsToTry = new ArrayList<>();
-        if (!resp.data.disable_ip6) {
-            for (String addr : resp.data.targets6) {
+        if (!((AgentRoutingGetResponse) resp).disable_ip6()) {
+            for (String addr : ((AgentRoutingGetResponse) resp).targets6()) {
                 addrsToTry.add(new InetSocketAddress(Inet6Address.getByName(addr), 5525));
             }
         }
-        for (String addr : resp.data.targets4) {
+        for (String addr : ((AgentRoutingGetResponse) resp).targets4()) {
             addrsToTry.add(new InetSocketAddress(Inet4Address.getByName(addr), 5525));
         }
         Bootstrap b = new Bootstrap();
         b.group(group);
         b.channel(NioDatagramChannel.class);
         b.handler(new ControlChannelHandler(connector, addrsToTry));
-        b.bind(0);
+        b.bind(0).syncUninterruptibly();
     }
 
     private static final String ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -196,22 +168,18 @@ public class PlayitAgent implements Closeable {
                     if (expiry < System.currentTimeMillis()) {
                         rtt = (int) (System.currentTimeMillis() - pong.request_now());
                         establishReattemptTimeout.cancel();
-                        var protoRegisterReq = HttpRequest.newBuilder(URI.create("https://api.playit.gg/proto/register"))
-                                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(new ProtoRegisterRequest(
-                                        new PlayitAgentVersion(
-                                                new AgentVersion("minecraft-plugin", "0.1.0", false),
-                                                true,
-                                                null),
-                                        pong.client_addr().address().toString().split("/")[1],
-                                        pong.tunnel_addr().address().toString().split("/")[1]
-                                ))))
-                                .setHeader("Content-Type", "application/json")
-                                .setHeader("Authorization", "Agent-Key " + secretKey)
-                                .build();
-                        var protoRegisterResp = httpClient.send(protoRegisterReq, HttpResponse.BodyHandlers.ofString());
-                        var registerResp = gson.fromJson(protoRegisterResp.body(), ProtoRegisterResponse.class);
-                        System.out.println(registerResp.data.key);
-                        authKey = HexFormat.of().parseHex(registerResp.data.key);
+                        var registerResp = apiClient.protoRegister(new ProtoRegisterRequest(
+                                new PlayitAgentVersion(
+                                        new AgentVersion("minecraft-plugin", "0.1.0", false),
+                                        true,
+                                        null),
+                                pong.client_addr().address().toString().split("/")[1],
+                                pong.tunnel_addr().address().toString().split("/")[1]
+                        ));
+                        if (!(registerResp instanceof ProtoRegisterResponse))
+                            throw new IOException("proto register error: " + registerResp.toString());
+                        System.out.println(((ProtoRegisterResponse) registerResp).key());
+                        authKey = HexFormat.of().parseHex(((ProtoRegisterResponse) registerResp).key());
                         var ch = ctx.channel();
                         var keyBuffer = ch.alloc().buffer(8 + authKey.length);
                         var lastRequestId = System.currentTimeMillis();
