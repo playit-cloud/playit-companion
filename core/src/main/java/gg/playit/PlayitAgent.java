@@ -8,6 +8,7 @@ import gg.playit.proto.control.s2c.*;
 import gg.playit.proto.rest.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -49,6 +50,7 @@ public class PlayitAgent implements Closeable {
         claimCode = makeClaimCode();
     }
 
+    // TODO: remove this once secret loading is done
     public PlayitAgent(String secretKey) {
         this.secretKey = secretKey;
         apiClient.setAgentKey(secretKey);
@@ -208,24 +210,14 @@ public class PlayitAgent implements Closeable {
                         System.out.println(agentRegistered);
                         pingTimeout = timer.newTimeout(timeout -> {
                             var ch = ctx.channel();
-                            var keepAliveBuffer = ch.alloc().buffer(22);
-                            var lastRequestId = System.currentTimeMillis();
-                            var keepAliveMsg = new ControlRpcRequest(lastRequestId, new PingControlRequest(lastRequestId, OptionalInt.of(rtt), Optional.of(id)));
-                            pendingRequests.add(lastRequestId);
-                            keepAliveMsg.writeTo(keepAliveBuffer);
-                            ch.writeAndFlush(new DatagramPacket(keepAliveBuffer, addresses.get(currentTargetAddress)));
+                            sendPacket(ch, new ControlRpcRequest(200, new PingControlRequest(System.currentTimeMillis(), OptionalInt.of(rtt), Optional.of(id))));
                             pingTimeout = timer.newTimeout(timeout.task(), 1000, TimeUnit.MILLISECONDS);
                         }, 1000, TimeUnit.MILLISECONDS);
                     }
                     if (keepaliveTimeout == null) {
                         keepaliveTimeout = timer.newTimeout(timeout -> {
                             var ch = ctx.channel();
-                            var keepAliveBuffer = ch.alloc().buffer(22);
-                            var lastRequestId = System.currentTimeMillis();
-                            var keepAliveMsg = new ControlRpcRequest(lastRequestId, new AgentKeepAliveControlRequest(id));
-                            pendingRequests.add(lastRequestId);
-                            keepAliveMsg.writeTo(keepAliveBuffer);
-                            ch.writeAndFlush(new DatagramPacket(keepAliveBuffer, addresses.get(currentTargetAddress)));
+                            sendPacket(ch, new ControlRpcRequest(100, new AgentKeepAliveControlRequest(id)));
                             keepaliveTimeout = timer.newTimeout(timeout.task(), 10, TimeUnit.SECONDS);
                         }, 10, TimeUnit.SECONDS);
                     }
@@ -260,15 +252,17 @@ public class PlayitAgent implements Closeable {
             }
         }
 
+        private void sendPacket(Channel ch, ControlRpcRequest packet) throws IOException {
+            var buffer = ch.alloc().buffer();
+            pendingRequests.add(packet.request_id());
+            packet.writeTo(buffer);
+            ch.writeAndFlush(new DatagramPacket(buffer, addresses.get(currentTargetAddress)));
+        }
+
         @Override
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             super.channelActive(ctx);
-            var ch = ctx.channel();
-            var buffer = ch.alloc().buffer(22);
-            var msg = new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty()));
-            pendingRequests.add(1L);
-            msg.writeTo(buffer);
-            ch.writeAndFlush(new DatagramPacket(buffer, addresses.get(currentTargetAddress)));
+            sendPacket(ctx.channel(), new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty())));
             establishReattemptTimeout = timer.newTimeout(timeout -> {
                 currentTargetAddressTries += 1;
                 var isv6 = addresses.get(currentTargetAddress).getAddress() instanceof Inet6Address;
@@ -278,12 +272,7 @@ public class PlayitAgent implements Closeable {
                     currentTargetAddress %= addresses.size();
                     System.out.println(addresses.get(currentTargetAddress));
                 }
-                var chRetry = ctx.channel();
-                var bufferRetry = chRetry.alloc().buffer(22);
-                var msgRetry = new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty()));
-                pendingRequests.add(1L);
-                msgRetry.writeTo(bufferRetry);
-                ch.writeAndFlush(new DatagramPacket(bufferRetry, addresses.get(currentTargetAddress)));
+                sendPacket(ctx.channel(), new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty())));
                 establishReattemptTimeout = timer.newTimeout(timeout.task(), 500, TimeUnit.MILLISECONDS);
             }, 500, TimeUnit.MILLISECONDS);
         }
