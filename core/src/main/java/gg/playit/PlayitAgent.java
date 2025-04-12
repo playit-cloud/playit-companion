@@ -52,14 +52,23 @@ public class PlayitAgent implements Closeable {
     public PlayitAgent(Platform platform) {
         this.platform = platform;
         logger = platform.getLogger();
-        // TODO: load secret from file
         try {
             var storedKey = platform.getAgentKey();
             if (storedKey != null) {
                 secretKey = storedKey;
                 apiClient.setAgentKey(storedKey);
+                var rundataResp = apiClient.agentsRundata();
+                if (!(rundataResp instanceof AgentRundataResponse)) {
+                    throw new IOException("Error getting agent data: " + rundataResp.toString());
+                }
+                if (!((AgentRundataResponse) rundataResp).agent_type().equals("self-managed")) {
+                    throw new IOException("Invalid agent type: " + ((AgentRundataResponse) rundataResp).agent_type());
+                }
+                if (!((AgentRundataResponse) rundataResp).account_status().equals("ready")) {
+                    throw new IOException("Bad account status: " + ((AgentRundataResponse) rundataResp).account_status());
+                }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.warn("Failed to read agent key from file", e);
         }
         if (secretKey == null) {
@@ -164,7 +173,7 @@ public class PlayitAgent implements Closeable {
     }
 
     private class ControlChannelHandler extends SimpleChannelInboundHandler<DatagramPacket> {
-        private Set<Long> pendingRequests = new HashSet<>();
+        private final Set<Long> pendingRequests = new HashSet<>();
         private byte[] authKey;
 
         private final List<InetSocketAddress> addresses;
@@ -310,7 +319,7 @@ public class PlayitAgent implements Closeable {
         }
 
         @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             logger.error("Exception from handler!", cause);
         }
     }
