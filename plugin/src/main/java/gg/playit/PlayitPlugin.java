@@ -2,6 +2,7 @@ package gg.playit;
 
 import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.minecraft.network.Connection;
 import net.minecraft.server.network.ServerConnectionListener;
 import org.bukkit.Bukkit;
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 public class PlayitPlugin extends JavaPlugin {
     private PlayitAgent agent;
+    private ScheduledTask task;
 
     @Override
     public void onEnable() {
@@ -107,6 +109,17 @@ public class PlayitPlugin extends JavaPlugin {
                 }
             }, 0, 500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        task.cancel();
+        try {
+            agent.close();
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
