@@ -49,6 +49,17 @@ public class ApiClient {
         return parsed.specialize(AgentRoutingGetResponse.class, AgentRoutingGetError.class);
     }
 
+    public Object agentsRundata() throws IOException, InterruptedException {
+        var req = HttpRequest.newBuilder(URI.create("https://api.playit.gg/agents/rundata"))
+                .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Authorization", "Agent-Key " + agentKey)
+                .build();
+        var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        var parsed = GSON.fromJson(resp.body(), GenericRestResult.class);
+        return parsed.specialize(AgentRundataResponse.class, String.class);
+    }
+
     public Object protoRegister(ProtoRegisterRequest request) throws IOException, InterruptedException {
         var req = HttpRequest.newBuilder(URI.create("https://api.playit.gg/proto/register"))
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(request)))
@@ -58,5 +69,17 @@ public class ApiClient {
         var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
         var parsed = GSON.fromJson(resp.body(), GenericRestResult.class);
         return parsed.specialize(ProtoRegisterResponse.class, String.class);
+    }
+
+    public Object tunnelsCreate(TunnelsCreateRequest request) throws IOException, InterruptedException {
+        var stringified = GSON.toJson(request);
+        var req = HttpRequest.newBuilder(URI.create("https://api.playit.gg/tunnels/create"))
+                .POST(HttpRequest.BodyPublishers.ofString(stringified))
+                .setHeader("Content-Type", "application/json")
+                .setHeader("Authorization", "Agent-Key " + agentKey)
+                .build();
+        var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        var parsed = GSON.fromJson(resp.body(), GenericRestResult.class);
+        return parsed.specialize(TunnelsCreateResponse.class, String.class);
     }
 }

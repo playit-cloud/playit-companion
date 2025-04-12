@@ -29,7 +29,6 @@ import java.net.InetSocketAddress;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 
 public class PlayitAgent implements Closeable {
     public enum ClaimStep {
@@ -54,15 +53,18 @@ public class PlayitAgent implements Closeable {
         this.platform = platform;
         logger = platform.getLogger();
         // TODO: load secret from file
-        claimCode = makeClaimCode();
-    }
-
-    // TODO: remove this once secret loading is done
-    public PlayitAgent(Platform platform, String secretKey) {
-        this.platform = platform;
-        logger = platform.getLogger();
-        this.secretKey = secretKey;
-        apiClient.setAgentKey(secretKey);
+        try {
+            var storedKey = platform.getAgentKey();
+            if (storedKey != null) {
+                secretKey = storedKey;
+                apiClient.setAgentKey(storedKey);
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to read agent key from file", e);
+        }
+        if (secretKey == null) {
+            claimCode = makeClaimCode();
+        }
     }
 
     public String getClaimCode() {
@@ -89,10 +91,29 @@ public class PlayitAgent implements Closeable {
         var exchangeResp = apiClient.claimExchange(claimCode);
         if (!(exchangeResp instanceof ClaimExchangeResponse))
             throw new IOException("claim exchange error: " + exchangeResp.toString());
-        // TODO: save secret to file
         secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key();
         logger.debug("got secret key {}", secretKey);
         apiClient.setAgentKey(secretKey);
+        try {
+            platform.writeAgentKey(secretKey);
+        } catch (IOException e) {
+            logger.warn("Failed to write agent key to file", e);
+        }
+        var rundataResp = apiClient.agentsRundata();
+        if (!(rundataResp instanceof AgentRundataResponse))
+            throw new IOException("rundata error: " + rundataResp.toString());
+        var id = ((AgentRundataResponse) rundataResp).agent_id();
+        var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
+                "Minecraft Java",
+                "minecraft-java",
+                "tcp",
+                1,
+                new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
+                true,
+                new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+        ));
+        if (!(tunnelResp instanceof TunnelsCreateResponse))
+            throw new IOException("tunnel creation error: " + tunnelResp.toString());
         claimCode = null;
         return ClaimStep.Accepted;
     }
@@ -206,9 +227,6 @@ public class PlayitAgent implements Closeable {
                         ch.writeAndFlush(new DatagramPacket(keyBuffer, addresses.get(currentTargetAddress)));
                     }
                 } else if (rpcResponse.content() instanceof RequestQueuedControlResponse) {
-                    if (authKey == null) {
-                        throw new IOException("what");
-                    }
                     timer.newTimeout(timeout -> {
                         var ch = ctx.channel();
                         var keyBuffer = ch.alloc().buffer(8 + authKey.length);

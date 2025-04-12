@@ -9,14 +9,22 @@ import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class PlayitPlugin extends JavaPlugin {
+    private PlayitAgent agent;
+
     @Override
     public void onEnable() {
         try {
+            var agentKeyPath = getDataPath().resolve("agent_key.txt");
+
             var clazz = (Class<? extends ChannelHandler>) Class.forName("io.netty.bootstrap.ServerBootstrap$ServerBootstrapAcceptor"); // This inner class is private
             var nmsServer = ((CraftServer) Bukkit.getServer()).getServer();
             var scl = nmsServer.getConnection();
@@ -29,7 +37,7 @@ public class PlayitPlugin extends JavaPlugin {
             var childHandler = (ChannelInitializer) childHandlerField.get(handler);
             var initChannelMethod = childHandler.getClass().getDeclaredMethod("initChannel", Channel.class);
             initChannelMethod.setAccessible(true);
-            PlayitAgent agent = new PlayitAgent(new Platform() {
+            agent = new PlayitAgent(new Platform() {
                 @Override
                 public Logger getLogger() {
                     return getSLF4JLogger();
@@ -59,8 +67,45 @@ public class PlayitPlugin extends JavaPlugin {
                         throw new RuntimeException(e);
                     }
                 }
-            }, "meow");
-            agent.run();
+
+                @Override
+                public String getAgentKey() throws IOException {
+                    if (Files.exists(agentKeyPath)) {
+                        return Files.readString(agentKeyPath, StandardCharsets.UTF_8).strip();
+                    } else {
+                        return null;
+                    }
+                }
+
+                @Override
+                public void writeAgentKey(String agentKey) throws IOException {
+                    Files.createDirectories(getDataPath());
+                    Files.writeString(agentKeyPath, agentKey, StandardCharsets.UTF_8);
+                }
+            });
+
+            if (agent.getClaimCode() != null) {
+                Bukkit.getServer().sendPlainMessage("https://playit.gg/claim/" + agent.getClaimCode());
+            }
+
+            Bukkit.getAsyncScheduler().runAtFixedRate(this, task -> {
+                try {
+                    switch (agent.claimStep()) {
+                        case Accepted:
+                            agent.run();
+                            task.cancel();
+                            break;
+                        case Rejected:
+                            Bukkit.getServer().sendPlainMessage("Agent registration rejected!");
+                            task.cancel();
+                            break;
+                        case NotDone:
+                            break;
+                    }
+                } catch (Exception e) {
+                    getSLF4JLogger().error("Error running agent", e);
+                }
+            }, 0, 500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
