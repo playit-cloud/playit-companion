@@ -19,6 +19,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timeout;
 import io.netty.util.Timer;
+import org.slf4j.Logger;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -37,21 +38,29 @@ public class PlayitAgent implements Closeable {
         Accepted
     }
 
+    private final Platform platform;
     private final ApiClient apiClient = new ApiClient();
     private final NioEventLoopGroup group = new NioEventLoopGroup();
+    private final Logger logger;
+
+    private Channel controlChannel;
 
     private final Timer timer = new HashedWheelTimer();
 
     private String claimCode;
     private String secretKey;
 
-    public PlayitAgent() {
+    public PlayitAgent(Platform platform) {
+        this.platform = platform;
+        logger = platform.getLogger();
         // TODO: load secret from file
         claimCode = makeClaimCode();
     }
 
     // TODO: remove this once secret loading is done
-    public PlayitAgent(String secretKey) {
+    public PlayitAgent(Platform platform, String secretKey) {
+        this.platform = platform;
+        logger = platform.getLogger();
         this.secretKey = secretKey;
         apiClient.setAgentKey(secretKey);
     }
@@ -64,7 +73,7 @@ public class PlayitAgent implements Closeable {
     public ClaimStep claimStep() throws IOException, InterruptedException {
         if (claimCode == null)
             return secretKey == null ? ClaimStep.Rejected : ClaimStep.Accepted;
-        var resp = apiClient.claimSetup(claimCode, "self-managed", "playit-companion 0.1.0"); // TODO: gradlery to replace version
+        var resp = apiClient.claimSetup(claimCode, "self-managed", "playit-companion " + platform.getVersion());
         if (!(resp instanceof ClaimSetupResponse))
             throw new IOException("claim setup error: " + resp.toString());
         switch (((ClaimSetupResponse) resp)) {
@@ -82,17 +91,17 @@ public class PlayitAgent implements Closeable {
             throw new IOException("claim exchange error: " + exchangeResp.toString());
         // TODO: save secret to file
         secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key();
-        System.out.println(secretKey);
+        logger.debug("got secret key {}", secretKey);
         apiClient.setAgentKey(secretKey);
         claimCode = null;
         return ClaimStep.Accepted;
     }
 
-    public void run(BiConsumer<InetSocketAddress, NioSocketChannel> connector) throws IOException, InterruptedException {
+    public void run() throws IOException, InterruptedException {
         var resp = apiClient.agentsRoutingGet();
         if (!(resp instanceof AgentRoutingGetResponse))
             throw new IOException("agent routing error: " + resp.toString());
-        System.out.println(resp);
+        logger.debug("got routing resp {}", resp);
         List<InetSocketAddress> addrsToTry = new ArrayList<>();
         if (!((AgentRoutingGetResponse) resp).disable_ip6()) {
             for (String addr : ((AgentRoutingGetResponse) resp).targets6()) {
@@ -105,8 +114,8 @@ public class PlayitAgent implements Closeable {
         Bootstrap b = new Bootstrap();
         b.group(group);
         b.channel(NioDatagramChannel.class);
-        b.handler(new ControlChannelHandler(connector, addrsToTry));
-        b.bind(0).syncUninterruptibly();
+        b.handler(new ControlChannelHandler(addrsToTry));
+        controlChannel = b.bind(0).channel();
     }
 
     private static final String ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
@@ -122,14 +131,18 @@ public class PlayitAgent implements Closeable {
 
     @Override
     public void close() throws IOException {
-//        httpClient.close();
+        timer.stop();
+        if (controlChannel != null) {
+            try {
+                controlChannel.close().await();
+            } catch (InterruptedException ignored) {}
+        }
         try {
             group.shutdownGracefully().await();
         } catch (InterruptedException ignored) {}
     }
 
     private class ControlChannelHandler extends SimpleChannelInboundHandler<DatagramPacket> {
-        private final BiConsumer<InetSocketAddress, NioSocketChannel> connector;
         private Set<Long> pendingRequests = new HashSet<>();
         private byte[] authKey;
 
@@ -146,22 +159,22 @@ public class PlayitAgent implements Closeable {
         private Timeout keepaliveTimeout;
         private Timeout pingTimeout;
 
-        public ControlChannelHandler(BiConsumer<InetSocketAddress, NioSocketChannel> connector, List<InetSocketAddress> addresses) {
-            this.connector = connector;
+        public ControlChannelHandler(List<InetSocketAddress> addresses) {
             this.addresses = addresses;
         }
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
             if (!msg.sender().equals(addresses.get(currentTargetAddress))) {
-                System.out.println("Bad sender address, discarding unread");
+                logger.warn("Bad sender address, discarding unread");
                 return;
             }
             var buffer = msg.content();
             var parsed = WireReadable.from(buffer);
             if (parsed instanceof ControlRpcResponse rpcResponse) {
                 if (!pendingRequests.remove(rpcResponse.request_id())) {
-                    throw new IOException("bad response request id");
+                    logger.error("Got a response to a nonexistent request?");
+                    return;
                 }
                 if (rpcResponse.content() instanceof PongControlResponse pong) {
                     if (pong.session_expire_at().isPresent()) {
@@ -172,15 +185,17 @@ public class PlayitAgent implements Closeable {
                         establishReattemptTimeout.cancel();
                         var registerResp = apiClient.protoRegister(new ProtoRegisterRequest(
                                 new PlayitAgentVersion(
-                                        new AgentVersion("minecraft-plugin", "0.1.0", false),
+                                        new AgentVersion("minecraft-plugin", platform.getVersion(), false),
                                         true,
                                         null),
-                                pong.client_addr().address().toString().split("/")[1],
-                                pong.tunnel_addr().address().toString().split("/")[1]
+                                pong.client_addr().toString(),
+                                pong.tunnel_addr().toString()
                         ));
-                        if (!(registerResp instanceof ProtoRegisterResponse))
-                            throw new IOException("proto register error: " + registerResp.toString());
-                        System.out.println(((ProtoRegisterResponse) registerResp).key());
+                        if (!(registerResp instanceof ProtoRegisterResponse)) {
+                            logger.error("Failed to register control channel: {}", registerResp);
+                            return;
+                        }
+                        logger.debug("got register key {}", ((ProtoRegisterResponse) registerResp).key());
                         authKey = HexFormat.of().parseHex(((ProtoRegisterResponse) registerResp).key());
                         var ch = ctx.channel();
                         var keyBuffer = ch.alloc().buffer(8 + authKey.length);
@@ -207,7 +222,7 @@ public class PlayitAgent implements Closeable {
                     expiry = agentRegistered.expires_at();
                     id = agentRegistered.id();
                     if (pingTimeout == null) {
-                        System.out.println(agentRegistered);
+                        logger.debug("registered agent! response: {}", agentRegistered);
                         pingTimeout = timer.newTimeout(timeout -> {
                             var ch = ctx.channel();
                             sendPacket(ch, new ControlRpcRequest(200, new PingControlRequest(System.currentTimeMillis(), OptionalInt.of(rtt), Optional.of(id))));
@@ -222,10 +237,10 @@ public class PlayitAgent implements Closeable {
                         }, 10, TimeUnit.SECONDS);
                     }
                 } else {
-                    throw new IOException("unhandled response type");
+                    logger.error("Unhandled response type!");
                 }
             } else if (parsed instanceof NewClient newClient) {
-                System.out.println(newClient);
+                logger.debug("new client: {}", newClient);
                 Bootstrap b = new Bootstrap();
                 b.group(group);
                 b.channel(NioSocketChannel.class);
@@ -233,11 +248,10 @@ public class PlayitAgent implements Closeable {
                     @Override
                     public void channelActive(ChannelHandlerContext ctx) throws Exception {
                         var token = newClient.claim_instructions().token();
-                        System.out.println(Arrays.toString(token));
                         var buf = ctx.alloc().buffer(token.length);
                         buf.writeBytes(token);
                         ctx.channel().writeAndFlush(buf);
-                        connector.accept(newClient.peer_addr().address(), (NioSocketChannel) ctx.channel());
+                        platform.newMinecraftConnection(newClient.peer_addr().address(), (NioSocketChannel) ctx.channel());
                         super.channelActive(ctx);
                     }
 
@@ -270,11 +284,16 @@ public class PlayitAgent implements Closeable {
                 if (currentTargetAddressTries >= maxAttempts) {
                     currentTargetAddress += 1;
                     currentTargetAddress %= addresses.size();
-                    System.out.println(addresses.get(currentTargetAddress));
+                    logger.info("trying next address: {}", addresses.get(currentTargetAddress));
                 }
                 sendPacket(ctx.channel(), new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty())));
                 establishReattemptTimeout = timer.newTimeout(timeout.task(), 500, TimeUnit.MILLISECONDS);
             }, 500, TimeUnit.MILLISECONDS);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            logger.error("Exception from handler!", cause);
         }
     }
 }

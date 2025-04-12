@@ -30,4 +30,9 @@ public record SocketAddr(InetSocketAddress address) {
                 throw new IOException("bad IP family");
         }
     }
+
+    @Override
+    public String toString() {
+        return address.getAddress().getHostAddress() + ":" + address.getPort();
+    }
 }
