@@ -57,6 +57,7 @@ public class PlayitAgent implements Closeable {
         try {
             var storedKey = platform.getAgentKey();
             if (storedKey != null) {
+                apiClient.setAgentKey(storedKey);
                 var rundataResp = apiClient.agentsRundata();
                 if (!(rundataResp instanceof AgentRundataResponse)) {
                     throw new IOException("Error getting agent data: " + rundataResp.toString());
@@ -69,7 +70,6 @@ public class PlayitAgent implements Closeable {
                 }
                 cachedRundata = (AgentRundataResponse) rundataResp;
                 secretKey = storedKey;
-                apiClient.setAgentKey(storedKey);
             }
         } catch (Exception e) {
             logger.warn("Failed to read agent key from file", e);

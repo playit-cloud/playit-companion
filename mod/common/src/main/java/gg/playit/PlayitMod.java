@@ -3,7 +3,9 @@ package gg.playit;
 import gg.playit.mixin.ConnectionAccessor;
 import gg.playit.mixin.ServerConnectionListenerChildHandlerAccessor;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.Connection;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
@@ -70,12 +72,25 @@ public class PlayitMod {
 
             @Override
             public void tunnelAddressInformation(String addr) {
-                server.sendSystemMessage(Component.literal("Server available at " + addr));
+                var addrComponent = Component
+                        .literal(addr)
+                        .withStyle(style -> style
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, addr))
+                                .withColor(ChatFormatting.GREEN)
+                        );
+                server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.domain", addrComponent), false);
             }
         });
 
         if (agent.getClaimCode() != null) {
-            server.sendSystemMessage(Component.literal("https://playit.gg/claim/" + agent.getClaimCode()));
+            var url = "https://playit.gg/claim/" + agent.getClaimCode();
+            var urlComponent = Component
+                    .literal(url)
+                    .withStyle(style -> style
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
+                            .withColor(ChatFormatting.BLUE)
+                    );
+            server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.claim", urlComponent), false);
         }
 
         timer.scheduleAtFixedRate(new TimerTask() {
@@ -89,7 +104,7 @@ public class PlayitMod {
                             timer = new Timer();
                             break;
                         case Rejected:
-                            server.sendSystemMessage(Component.literal("Agent registration rejected!"));
+                            server.getPlayerList().broadcastSystemMessage(Component.literal("Agent registration rejected!"), false);
                             timer.cancel();
                             timer = new Timer();
                             break;
