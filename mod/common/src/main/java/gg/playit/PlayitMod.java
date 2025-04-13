@@ -7,6 +7,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,6 +77,7 @@ public class PlayitMod {
                         .literal(addr)
                         .withStyle(style -> style
                                 .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, addr))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("chat.copy.click")))
                                 .withColor(ChatFormatting.GREEN)
                         );
                 server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.domain", addrComponent), false);
@@ -88,6 +90,7 @@ public class PlayitMod {
                     .literal(url)
                     .withStyle(style -> style
                             .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
+                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("chat.link.open")))
                             .withColor(ChatFormatting.BLUE)
                     );
             server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.claim", urlComponent), false);

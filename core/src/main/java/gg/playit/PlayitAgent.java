@@ -114,7 +114,6 @@ public class PlayitAgent implements Closeable {
         var rundataResp = apiClient.agentsRundata();
         if (!(rundataResp instanceof AgentRundataResponse))
             throw new IOException("rundata error: " + rundataResp.toString());
-        cachedRundata = (AgentRundataResponse) rundataResp;
         var id = cachedRundata.agent_id();
         var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
                 "Minecraft Java",

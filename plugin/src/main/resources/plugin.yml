@@ -2,6 +2,6 @@ name: PlayitPlugin
 version: 0.1.0
 main: gg.playit.PlayitPlugin
 description: Playit Companion
-author: Skye? I think?
+author: skyevg
 website: https://playit.gg
 api-version: '1.20'
