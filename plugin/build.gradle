@@ -41,6 +41,12 @@ processResources {
     }
 }
 
+compileJava {
+    sourceCompatibility = 17
+    targetCompatibility = 17
+    options.release = 17
+}
+
 paperweight {
     reobfArtifactConfiguration = ReobfArtifactConfiguration.getMOJANG_PRODUCTION()
 }
