@@ -84,6 +84,11 @@ public class PlayitPlugin extends JavaPlugin {
                     Files.createDirectories(getDataPath());
                     Files.writeString(agentKeyPath, agentKey, StandardCharsets.UTF_8);
                 }
+
+                @Override
+                public void tunnelAddressInformation(String addr) {
+                    Bukkit.getServer().sendPlainMessage("Server available at " + addr);
+                }
             });
 
             if (agent.getClaimCode() != null) {

@@ -67,6 +67,11 @@ public class PlayitMod {
                 Files.createDirectories(agentKeyPath.getParent());
                 Files.writeString(agentKeyPath, agentKey, StandardCharsets.UTF_8);
             }
+
+            @Override
+            public void tunnelAddressInformation(String addr) {
+                server.sendSystemMessage(Component.literal("Server available at " + addr));
+            }
         });
 
         if (agent.getClaimCode() != null) {

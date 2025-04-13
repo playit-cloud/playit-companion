@@ -49,14 +49,14 @@ public class PlayitAgent implements Closeable {
     private String claimCode;
     private String secretKey;
 
+    private AgentRundataResponse cachedRundata;
+
     public PlayitAgent(Platform platform) {
         this.platform = platform;
         logger = platform.getLogger();
         try {
             var storedKey = platform.getAgentKey();
             if (storedKey != null) {
-                secretKey = storedKey;
-                apiClient.setAgentKey(storedKey);
                 var rundataResp = apiClient.agentsRundata();
                 if (!(rundataResp instanceof AgentRundataResponse)) {
                     throw new IOException("Error getting agent data: " + rundataResp.toString());
@@ -67,6 +67,9 @@ public class PlayitAgent implements Closeable {
                 if (!((AgentRundataResponse) rundataResp).account_status().equals("ready")) {
                     throw new IOException("Bad account status: " + ((AgentRundataResponse) rundataResp).account_status());
                 }
+                cachedRundata = (AgentRundataResponse) rundataResp;
+                secretKey = storedKey;
+                apiClient.setAgentKey(storedKey);
             }
         } catch (Exception e) {
             logger.warn("Failed to read agent key from file", e);
@@ -111,7 +114,8 @@ public class PlayitAgent implements Closeable {
         var rundataResp = apiClient.agentsRundata();
         if (!(rundataResp instanceof AgentRundataResponse))
             throw new IOException("rundata error: " + rundataResp.toString());
-        var id = ((AgentRundataResponse) rundataResp).agent_id();
+        cachedRundata = (AgentRundataResponse) rundataResp;
+        var id = cachedRundata.agent_id();
         var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
                 "Minecraft Java",
                 "minecraft-java",
@@ -128,6 +132,20 @@ public class PlayitAgent implements Closeable {
     }
 
     public void run() throws IOException, InterruptedException {
+        if (cachedRundata == null) {
+            var rundataResp = apiClient.agentsRundata();
+            if (!(rundataResp instanceof AgentRundataResponse))
+                throw new IOException("rundata error: " + rundataResp.toString());
+            cachedRundata = (AgentRundataResponse) rundataResp;
+        }
+        for (AgentTunnel tunnel : cachedRundata.tunnels()) {
+            if (tunnel.tunnel_type().equals("minecraft-java")) {
+                var domain = tunnel.custom_domain();
+                if (domain == null)
+                    domain = tunnel.assigned_domain();
+                platform.tunnelAddressInformation(domain);
+            }
+        }
         var resp = apiClient.agentsRoutingGet();
         if (!(resp instanceof AgentRoutingGetResponse))
             throw new IOException("agent routing error: " + resp.toString());

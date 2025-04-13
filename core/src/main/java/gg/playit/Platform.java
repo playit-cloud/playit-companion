@@ -12,4 +12,5 @@ public interface Platform {
     void newMinecraftConnection(InetSocketAddress peer_address, NioSocketChannel channel);
     String getAgentKey() throws IOException;
     void writeAgentKey(String agentKey) throws IOException;
+    void tunnelAddressInformation(String addr);
 }
