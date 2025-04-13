@@ -11,6 +11,10 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/mod" />
+            <option value="$PROJECT_DIR$/mod/common" />
+            <option value="$PROJECT_DIR$/mod/fabric" />
+            <option value="$PROJECT_DIR$/mod/forge" />
+            <option value="$PROJECT_DIR$/mod/neoforge" />
             <option value="$PROJECT_DIR$/plugin" />
           </set>
         </option>

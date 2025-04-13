@@ -1,0 +1,119 @@
+plugins {
+    id "com.github.johnrengelman.shadow" version "7.1.2"
+    id "me.modmuss50.mod-publish-plugin" version "0.3.0"
+}
+
+architectury {
+    platformSetupLoomIde()
+    forge()
+}
+
+loom {
+    forge {
+        mixinConfig "e4mc_minecraft.mixins.json"
+    }
+}
+
+configurations {
+    common
+    shadowCommon // Don't use shadow from the shadow plugin since it *excludes* files.
+    compileClasspath.extendsFrom common
+    runtimeClasspath.extendsFrom common
+    developmentForge.extendsFrom common
+}
+
+dependencies {
+    forge "net.minecraftforge:forge:${forge_version}"
+
+    common(project(path: ":mod:common", configuration: "namedElements")) { transitive false }
+    shadowCommon(project(path: ":mod:common", configuration: "transformProductionForge")) { transitive = false }
+    shadowCommon(project(":core")) { transitive false }
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("META-INF/mods.toml") {
+        expand "version": project.version
+    }
+}
+
+shadowJar {
+    exclude "fabric.mod.json"
+    exclude "architectury.common.json"
+
+    configurations = [project.configurations.shadowCommon]
+    archiveClassifier = "dev-shadow"
+}
+
+remapJar {
+    input.set shadowJar.archiveFile
+    dependsOn shadowJar
+}
+
+sourcesJar {
+    def commonSources = project(":mod:common").sourcesJar
+    dependsOn commonSources
+    from commonSources.archiveFile.map { zipTree(it) }
+}
+
+components.java {
+    withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
+        skip()
+    }
+}
+
+publishing {
+    publications {
+        mavenForge(MavenPublication) {
+            artifactId = archives_base_name + "-" + project.name
+            from components.java
+        }
+    }
+
+    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+    repositories {
+        // Add repositories to publish to here.
+        maven {
+            url "https://sg.storage.bunnycdn.com/skyeven"
+            credentials(HttpHeaderCredentials) {
+                name = "AccessKey"
+                value = property("skyevenToken")
+            }
+            authentication {
+                header(HttpHeaderAuthentication)
+            }
+        }
+    }
+}
+
+publishMods {
+    file = remapJar.archiveFile
+    type = STABLE
+    modLoaders.add("forge")
+
+    version = project.version + "-forge"
+    displayName = "[Forge] $project.version"
+
+    // Uncomment your desired platform(s)
+    curseforge {
+        accessToken = project.curseforgeApiToken
+        projectId = project.curseforgeId
+        minecraftVersions.addAll(
+                "1.18", "1.18.1", "1.18.2",
+                "1.19", "1.19.1", "1.19.2", "1.19.3", "1.19.4",
+                "1.20", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5", "1.20.6",
+        )
+    }
+
+    modrinth {
+        accessToken = project.modrinthApiToken
+        projectId = project.modrinthId
+        additionalFiles.from(sourcesJar.archiveFile)
+        minecraftVersions.addAll(
+                "1.18", "1.18.1", "1.18.2",
+                "1.19", "1.19.1", "1.19.2", "1.19.3", "1.19.4",
+                "1.20", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.5", "1.20.6",
+        )
+    }
+}

@@ -1,9 +1,9 @@
 pluginManagement {
     repositories {
-        maven {
-            name = 'Fabric'
-            url = 'https://maven.fabricmc.net/'
-        }
+        maven { url "https://maven.fabricmc.net/" }
+        maven { url "https://maven.architectury.dev/" }
+        maven { url "https://maven.minecraftforge.net/" }
+        maven { url "https://maven.neoforged.net/releases/" }
         mavenCentral()
         gradlePluginPortal()
         maven {
@@ -14,6 +14,10 @@ pluginManagement {
 
 include("core")
 include("mod")
+include("mod:common")
+include("mod:fabric")
+include("mod:forge")
+include("mod:neoforge")
 include("plugin")
 
 rootProject.name = "playit-companion"

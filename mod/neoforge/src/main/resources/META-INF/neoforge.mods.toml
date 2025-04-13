@@ -1,0 +1,30 @@
+modLoader = "javafml"
+loaderVersion = "*"
+license = "MIT"
+
+[[mods]]
+modId = "playit-companion"
+version = "${version}"
+displayName = "Playit Companion"
+credits = "skyevg"
+authors = "skyevg"
+description = '''
+Placeholder mod description please replace
+'''
+
+[[mixins]]
+config = "playit-companion.mixins.json"
+
+[[dependencies.playit-companion]]
+modId = "neoforge"
+mandatory = true
+versionRange = "*"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.playit-companion]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.18,)"
+ordering = "NONE"
+side = "BOTH"

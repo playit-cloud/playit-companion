@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "playit-companion",
+  "version": "${version}",
+  "name": "Playit Companion",
+  "description": "Placeholder mod description please replace",
+  "authors": [
+    "skyevg"
+  ],
+  "contact": {
+    "homepage": "https://playit.gg/",
+    "sources": "https://github.com/playit-cloud/playit-companion"
+  },
+  "license": "MIT",
+  "icon": "assets/playit-companion/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "gg.playit.fabric.PlayitFabric"
+    ]
+  },
+  "mixins": [
+    "playit-companion.mixins.json"
+  ],
+  "depends": {
+    "fabric": "*",
+    "minecraft": ">=1.18"
+  }
+}
