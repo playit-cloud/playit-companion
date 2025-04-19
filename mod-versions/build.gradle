@@ -1,0 +1,86 @@
+import vg.skye.shinkansen.prod.RemapJar
+
+plugins {
+    id 'vg.skye.shinkansen' version '0.5-SNAPSHOT' apply false
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: "vg.skye.shinkansen"
+    group = rootProject.group
+    version = rootProject.version
+
+    repositories {
+        maven { url "https://maven.fabricmc.net/" }
+        maven {
+            name "NeoForge"
+            url "https://maven.neoforged.net/releases"
+        }
+    }
+
+    configurations {
+        mappings
+        srg {
+            canBeConsumed = true
+            canBeResolved = false
+        }
+        intermediary {
+            canBeConsumed = true
+            canBeResolved = false
+        }
+    }
+
+    compileJava {
+        sourceCompatibility = 17
+        targetCompatibility = 17
+        options.release = 17
+    }
+
+    def mc = shinkansen.getMinecraft(project.minecraft_version)
+
+    dependencies {
+        mappings "de.oceanlabs.mcp:mcp_config:${project.minecraft_version}"
+        mappings "net.fabricmc:intermediary:${project.minecraft_version}:v2"
+        compileOnly files(mc.minecraft)
+        mc.dependencies.forEach {
+            if (!it.contains('jtracy')) {
+                compileOnly it
+            }
+        }
+    }
+
+    def remapJarSrg = tasks.register("remapJarSrg", RemapJar) {
+        libraries.from(mc.minecraft)
+        mappings.from(
+                mc.vanilla.clientMappings,
+                mc.vanilla.serverMappings,
+                configurations.mappings
+        )
+        input = tasks.jar.archiveFile
+        sourceMapping = "named"
+        destMapping = "virtual-srg"
+
+        archiveClassifier = "srg"
+    }
+
+    def remapJarIntermediary = tasks.register("remapJarIntermediary", RemapJar) {
+        libraries.from(mc.minecraft)
+        mappings.from(
+                mc.vanilla.clientMappings,
+                mc.vanilla.serverMappings,
+                configurations.mappings
+        )
+        input = tasks.jar.archiveFile
+        sourceMapping = "named"
+        destMapping = "intermediary"
+
+        archiveClassifier = "intermediary"
+    }
+
+
+
+    artifacts {
+        srg(remapJarSrg)
+        intermediary(remapJarIntermediary)
+    }
+}

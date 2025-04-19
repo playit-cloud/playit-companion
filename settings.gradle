@@ -4,6 +4,7 @@ pluginManagement {
         maven { url "https://maven.architectury.dev/" }
         maven { url "https://maven.minecraftforge.net/" }
         maven { url "https://maven.neoforged.net/releases/" }
+        maven { url "https://maven.is-quite.gay/" }
         mavenCentral()
         gradlePluginPortal()
         maven {
@@ -13,11 +14,15 @@ pluginManagement {
 }
 
 include("core")
+include("plugin")
+include("mod-versions")
+include("mod-versions:1.18")
+include("mod-versions:1.19")
+include("mod-versions:1.21.5")
 include("mod")
 include("mod:common")
 include("mod:fabric")
 include("mod:forge")
 include("mod:neoforge")
-include("plugin")
 
 rootProject.name = "playit-companion"

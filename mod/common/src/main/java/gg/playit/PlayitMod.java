@@ -5,9 +5,6 @@ import gg.playit.mixin.ServerConnectionListenerChildHandlerAccessor;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.Connection;
-import net.minecraft.network.chat.ClickEvent;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,14 +24,6 @@ public class PlayitMod {
     private static Timer timer = new Timer();
 
     public static void init() {
-//        if (System.getProperty("os.name").startsWith("Windows")) {
-//            var path = Agnos.jarPath();
-//            var motwPath = path + ":Zone.Identifier";
-//            try(FileInputStream inputStream = new FileInputStream(motwPath)) {
-//                String hidden = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-//                LOGGER.warn(hidden);
-//            } catch (IOException ignored) {}
-//        }
     }
 
     public static void start(MinecraftServer server, ServerConnectionListenerChildHandlerAccessor accessor) {
@@ -73,27 +62,25 @@ public class PlayitMod {
 
             @Override
             public void tunnelAddressInformation(String addr) {
-                var addrComponent = Component
-                        .literal(addr)
-                        .withStyle(style -> style
-                                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, addr))
-                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("chat.copy.click")))
+                var addrComponent = VersionArbitrage.withStyle(VersionArbitrage.literal(addr),
+                        style -> style
+                                .withClickEvent(VersionArbitrage.copyToClipboard(addr))
+                                .withHoverEvent(VersionArbitrage.showText(VersionArbitrage.translatable("chat.copy.click")))
                                 .withColor(ChatFormatting.GREEN)
                         );
-                server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.domain", addrComponent), false);
+                VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.domain", addrComponent));
             }
         });
 
         if (agent.getClaimCode() != null) {
             var url = "https://playit.gg/claim/" + agent.getClaimCode();
-            var urlComponent = Component
-                    .literal(url)
-                    .withStyle(style -> style
-                            .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("chat.link.open")))
+            var urlComponent = VersionArbitrage.withStyle(
+                    VersionArbitrage.literal(url),style -> style
+                            .withClickEvent(VersionArbitrage.openUrl(url))
+                            .withHoverEvent(VersionArbitrage.showText(VersionArbitrage.translatable("chat.link.open")))
                             .withColor(ChatFormatting.BLUE)
                     );
-            server.getPlayerList().broadcastSystemMessage(Component.translatable("playit.claim", urlComponent), false);
+            VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.claim", urlComponent));
         }
 
         timer.scheduleAtFixedRate(new TimerTask() {
@@ -107,7 +94,7 @@ public class PlayitMod {
                             timer = new Timer();
                             break;
                         case Rejected:
-                            server.getPlayerList().broadcastSystemMessage(Component.literal("Agent registration rejected!"), false);
+                            VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.rejected"));
                             timer.cancel();
                             timer = new Timer();
                             break;

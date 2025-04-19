@@ -21,6 +21,7 @@ dependencies {
 
     common(project(path: ":mod:common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":mod:common", configuration: "transformProductionNeoForge")) { transitive = false }
+    shadowCommon(project(":mod-versions:1.21.5")) { transitive = false }
     shadowCommon(project(":core")) { transitive false }
 }
 

@@ -1,4 +1,5 @@
 {
   "playit.domain": "Local game hosted on domain [%s]",
-  "playit.claim": "Visit [%s] to claim the agent"
+  "playit.claim": "Visit [%s] to claim the agent",
+  "playit.rejected": "Agent registration rejected!"
 }

@@ -11,6 +11,10 @@
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/mod" />
+            <option value="$PROJECT_DIR$/mod-versions" />
+            <option value="$PROJECT_DIR$/mod-versions/1.18" />
+            <option value="$PROJECT_DIR$/mod-versions/1.19" />
+            <option value="$PROJECT_DIR$/mod-versions/1.21.5" />
             <option value="$PROJECT_DIR$/mod/common" />
             <option value="$PROJECT_DIR$/mod/fabric" />
             <option value="$PROJECT_DIR$/mod/forge" />

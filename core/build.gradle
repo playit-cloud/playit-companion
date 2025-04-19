@@ -2,7 +2,7 @@ plugins {
     id 'java'
 }
 
-group = 'gg.playit'
+group = rootProject.group
 version = rootProject.version
 
 repositories {
