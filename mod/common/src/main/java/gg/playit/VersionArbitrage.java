@@ -89,9 +89,7 @@ public class VersionArbitrage {
     public static MutableComponent literal(String text) {
         try {
             return Version118.literal(text);
-        } catch (Throwable ignored) {
-            ignored.printStackTrace();
-        }
+        } catch (Throwable ignored) {}
         try {
             return Version119.literal(text);
         } catch (Throwable ignored) {}
