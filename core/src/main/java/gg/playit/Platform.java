@@ -1,6 +1,6 @@
 package gg.playit;
 
-import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.socket.SocketChannel;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -9,9 +9,10 @@ import java.net.InetSocketAddress;
 public interface Platform {
     Logger getLogger();
     String getVersion();
-    void newMinecraftConnection(InetSocketAddress peer_address, NioSocketChannel channel);
+    void newMinecraftConnection(InetSocketAddress peer_address, SocketChannel channel);
     String getAgentKey() throws IOException;
     void writeAgentKey(String agentKey) throws IOException;
     void tunnelAddressInformation(String addr);
     void notifyError();
+    boolean shouldUseEpoll();
 }

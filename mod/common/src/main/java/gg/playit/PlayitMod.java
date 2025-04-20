@@ -2,7 +2,8 @@ package gg.playit;
 
 import gg.playit.mixin.ConnectionAccessor;
 import gg.playit.mixin.ServerConnectionListenerChildHandlerAccessor;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.socket.SocketChannel;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
@@ -40,7 +41,7 @@ public class PlayitMod {
             }
 
             @Override
-            public void newMinecraftConnection(InetSocketAddress peer_address, NioSocketChannel channel) {
+            public void newMinecraftConnection(InetSocketAddress peer_address, SocketChannel channel) {
                 accessor.callInitChannel(channel);
                 ((ConnectionAccessor) channel.pipeline().get(Connection.class)).setAddress(peer_address);
             }
@@ -74,6 +75,11 @@ public class PlayitMod {
             @Override
             public void notifyError() {
                 VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.error"));
+            }
+
+            @Override
+            public boolean shouldUseEpoll() {
+                return Epoll.isAvailable() && server.isEpollEnabled();
             }
         });
 

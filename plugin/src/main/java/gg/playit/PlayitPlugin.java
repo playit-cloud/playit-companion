@@ -1,7 +1,8 @@
 package gg.playit;
 
 import io.netty.channel.*;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.socket.SocketChannel;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.minecraft.network.Connection;
 import net.minecraft.server.network.ServerConnectionListener;
@@ -51,7 +52,7 @@ public class PlayitPlugin extends JavaPlugin {
                 }
 
                 @Override
-                public void newMinecraftConnection(InetSocketAddress peer_address, NioSocketChannel channel) {
+                public void newMinecraftConnection(InetSocketAddress peer_address, SocketChannel channel) {
                     try {
                         channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                             @Override
@@ -93,6 +94,11 @@ public class PlayitPlugin extends JavaPlugin {
                 @Override
                 public void notifyError() {
                     Bukkit.getServer().sendPlainMessage("An error has occurred in playit. Check logs for more details.");
+                }
+
+                @Override
+                public boolean shouldUseEpoll() {
+                    return Epoll.isAvailable() && nmsServer.isEpollEnabled();
                 }
             });
 

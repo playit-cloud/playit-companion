@@ -8,12 +8,13 @@ import gg.playit.proto.control.s2c.*;
 import gg.playit.proto.rest.*;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
+import io.netty.channel.epoll.EpollDatagramChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramPacket;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.HashedWheelTimer;
@@ -39,7 +40,8 @@ public class PlayitAgent implements Closeable {
 
     private final Platform platform;
     private final ApiClient apiClient = new ApiClient();
-    private final NioEventLoopGroup group = new NioEventLoopGroup();
+    private final EventLoopGroup group;
+    private final boolean epoll;
     private final Logger logger;
 
     private Channel controlChannel;
@@ -53,6 +55,12 @@ public class PlayitAgent implements Closeable {
 
     public PlayitAgent(Platform platform) {
         this.platform = platform;
+        epoll = platform.shouldUseEpoll();
+        if (epoll) {
+            group = new EpollEventLoopGroup();
+        } else {
+            group = new NioEventLoopGroup();
+        }
         logger = platform.getLogger();
         try {
             var storedKey = platform.getAgentKey();
@@ -104,7 +112,6 @@ public class PlayitAgent implements Closeable {
         if (!(exchangeResp instanceof ClaimExchangeResponse))
             throw new IOException("claim exchange error: " + exchangeResp.toString());
         secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key;
-        logger.debug("got secret key {}", secretKey);
         apiClient.setAgentKey(secretKey);
         try {
             platform.writeAgentKey(secretKey);
@@ -148,7 +155,6 @@ public class PlayitAgent implements Closeable {
         var resp = apiClient.agentsRoutingGet();
         if (!(resp instanceof AgentRoutingGetResponse))
             throw new IOException("agent routing error: " + resp.toString());
-        logger.debug("got routing resp {}", resp);
         List<InetSocketAddress> addrsToTry = new ArrayList<>();
         if (!((AgentRoutingGetResponse) resp).disable_ip6) {
             for (String addr : ((AgentRoutingGetResponse) resp).targets6) {
@@ -160,7 +166,7 @@ public class PlayitAgent implements Closeable {
         }
         Bootstrap b = new Bootstrap();
         b.group(group);
-        b.channel(NioDatagramChannel.class);
+        b.channel(epoll ? EpollDatagramChannel.class : NioDatagramChannel.class);
         b.handler(new ControlChannelHandler(addrsToTry));
         controlChannel = b.bind(0).channel();
     }
@@ -242,7 +248,6 @@ public class PlayitAgent implements Closeable {
                             logger.error("Failed to register control channel: {}", registerResp);
                             return;
                         }
-                        logger.debug("got register key {}", ((ProtoRegisterResponse) registerResp).key);
                         authKey = HexFormat.of().parseHex(((ProtoRegisterResponse) registerResp).key);
                         var ch = ctx.channel();
                         var keyBuffer = ch.alloc().buffer(8 + authKey.length);
@@ -266,7 +271,6 @@ public class PlayitAgent implements Closeable {
                     expiry = agentRegistered.expires_at();
                     id = agentRegistered.id();
                     if (pingTimeout == null) {
-                        logger.debug("registered agent! response: {}", agentRegistered);
                         pingTimeout = timer.newTimeout(timeout -> {
                             var ch = ctx.channel();
                             sendPacket(ch, new ControlRpcRequest(200, new PingControlRequest(System.currentTimeMillis(), OptionalInt.of(rtt), Optional.of(id))));
@@ -284,10 +288,9 @@ public class PlayitAgent implements Closeable {
                     logger.error("Unhandled response type!");
                 }
             } else if (parsed instanceof NewClient newClient) {
-                logger.debug("new client: {}", newClient);
                 Bootstrap b = new Bootstrap();
                 b.group(group);
-                b.channel(NioSocketChannel.class);
+                b.channel(epoll ? EpollSocketChannel.class : NioSocketChannel.class);
                 b.handler(new ChannelInboundHandlerAdapter() {
                     @Override
                     public void channelActive(ChannelHandlerContext ctx) throws Exception {
@@ -295,7 +298,7 @@ public class PlayitAgent implements Closeable {
                         var buf = ctx.alloc().buffer(token.length);
                         buf.writeBytes(token);
                         ctx.channel().writeAndFlush(buf);
-                        platform.newMinecraftConnection(newClient.peer_addr().address(), (NioSocketChannel) ctx.channel());
+                        platform.newMinecraftConnection(newClient.peer_addr().address(), (SocketChannel) ctx.channel());
                         super.channelActive(ctx);
                     }
 
