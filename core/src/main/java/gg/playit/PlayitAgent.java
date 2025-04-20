@@ -213,7 +213,7 @@ public class PlayitAgent implements Closeable {
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
             if (!msg.sender().equals(addresses.get(currentTargetAddress))) {
-                logger.warn("Bad sender address, discarding unread");
+                logger.warn("Bad sender tunnel_addr, discarding unread");
                 return;
             }
             var buffer = msg.content();
@@ -328,7 +328,7 @@ public class PlayitAgent implements Closeable {
                 if (currentTargetAddressTries >= maxAttempts) {
                     currentTargetAddress += 1;
                     currentTargetAddress %= addresses.size();
-                    logger.info("trying next address: {}", addresses.get(currentTargetAddress));
+                    logger.info("trying next tunnel_addr: {}", addresses.get(currentTargetAddress));
                 }
                 sendPacket(ctx.channel(), new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty())));
                 establishReattemptTimeout = timer.newTimeout(timeout.task(), 500, TimeUnit.MILLISECONDS);
