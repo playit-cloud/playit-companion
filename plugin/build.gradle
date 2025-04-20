@@ -41,6 +41,8 @@ processResources {
     }
 }
 
-paperweight {
-    reobfArtifactConfiguration = ReobfArtifactConfiguration.getMOJANG_PRODUCTION()
+tasks.shadowJar {
+    manifest {
+        attributes["paperweight-mappings-namespace"] = "mojang"
+    }
 }
