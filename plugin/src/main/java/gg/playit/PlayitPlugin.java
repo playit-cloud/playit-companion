@@ -89,13 +89,18 @@ public class PlayitPlugin extends JavaPlugin {
                 public void tunnelAddressInformation(String addr) {
                     Bukkit.getServer().sendPlainMessage("Server available at " + addr);
                 }
+
+                @Override
+                public void notifyError() {
+                    Bukkit.getServer().sendPlainMessage("An error has occurred in playit. Check logs for more details.");
+                }
             });
 
             if (agent.getClaimCode() != null) {
                 Bukkit.getServer().sendPlainMessage("https://playit.gg/claim/" + agent.getClaimCode());
             }
 
-            Bukkit.getAsyncScheduler().runAtFixedRate(this, task -> {
+            task = Bukkit.getAsyncScheduler().runAtFixedRate(this, task -> {
                 try {
                     switch (agent.claimStep()) {
                         case Accepted:

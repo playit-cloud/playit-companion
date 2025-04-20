@@ -70,6 +70,11 @@ public class PlayitMod {
                         );
                 VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.domain", addrComponent));
             }
+
+            @Override
+            public void notifyError() {
+                VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.error"));
+            }
         });
 
         if (agent.getClaimCode() != null) {
@@ -103,6 +108,8 @@ public class PlayitMod {
                     }
                 } catch (Exception e) {
                     LOGGER.error("Error running agent", e);
+                    VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.error"));
+                    timer.cancel();
                 }
             }
         }, 0, 500);

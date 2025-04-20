@@ -338,6 +338,7 @@ public class PlayitAgent implements Closeable {
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             logger.error("Exception from handler!", cause);
+            platform.notifyError();
         }
     }
 }

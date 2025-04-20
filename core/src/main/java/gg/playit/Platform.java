@@ -13,4 +13,5 @@ public interface Platform {
     String getAgentKey() throws IOException;
     void writeAgentKey(String agentKey) throws IOException;
     void tunnelAddressInformation(String addr);
+    void notifyError();
 }
