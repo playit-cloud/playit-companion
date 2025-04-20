@@ -62,11 +62,11 @@ public class PlayitAgent implements Closeable {
                 if (!(rundataResp instanceof AgentRundataResponse)) {
                     throw new IOException("Error getting agent data: " + rundataResp.toString());
                 }
-                if (!((AgentRundataResponse) rundataResp).agent_type().equals("self-managed")) {
-                    throw new IOException("Invalid agent type: " + ((AgentRundataResponse) rundataResp).agent_type());
+                if (!((AgentRundataResponse) rundataResp).agent_type.equals("self-managed")) {
+                    throw new IOException("Invalid agent type: " + ((AgentRundataResponse) rundataResp).agent_type);
                 }
-                if (!((AgentRundataResponse) rundataResp).account_status().equals("ready")) {
-                    throw new IOException("Bad account status: " + ((AgentRundataResponse) rundataResp).account_status());
+                if (!((AgentRundataResponse) rundataResp).account_status.equals("ready")) {
+                    throw new IOException("Bad account status: " + ((AgentRundataResponse) rundataResp).account_status);
                 }
                 cachedRundata = (AgentRundataResponse) rundataResp;
                 secretKey = storedKey;
@@ -103,7 +103,7 @@ public class PlayitAgent implements Closeable {
         var exchangeResp = apiClient.claimExchange(claimCode);
         if (!(exchangeResp instanceof ClaimExchangeResponse))
             throw new IOException("claim exchange error: " + exchangeResp.toString());
-        secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key();
+        secretKey = ((ClaimExchangeResponse) exchangeResp).secret_key;
         logger.debug("got secret key {}", secretKey);
         apiClient.setAgentKey(secretKey);
         try {
@@ -114,7 +114,7 @@ public class PlayitAgent implements Closeable {
         var rundataResp = apiClient.agentsRundata();
         if (!(rundataResp instanceof AgentRundataResponse))
             throw new IOException("rundata error: " + rundataResp.toString());
-        var id = ((AgentRundataResponse) rundataResp).agent_id();
+        var id = ((AgentRundataResponse) rundataResp).agent_id;
         var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
                 "Minecraft Java",
                 "minecraft-java",
@@ -137,11 +137,11 @@ public class PlayitAgent implements Closeable {
                 throw new IOException("rundata error: " + rundataResp.toString());
             cachedRundata = (AgentRundataResponse) rundataResp;
         }
-        for (AgentTunnel tunnel : cachedRundata.tunnels()) {
-            if (tunnel.tunnel_type().equals("minecraft-java")) {
-                var domain = tunnel.custom_domain();
+        for (AgentTunnel tunnel : cachedRundata.tunnels) {
+            if (tunnel.tunnel_type.equals("minecraft-java")) {
+                var domain = tunnel.custom_domain;
                 if (domain == null)
-                    domain = tunnel.assigned_domain();
+                    domain = tunnel.assigned_domain;
                 platform.tunnelAddressInformation(domain);
             }
         }
@@ -150,12 +150,12 @@ public class PlayitAgent implements Closeable {
             throw new IOException("agent routing error: " + resp.toString());
         logger.debug("got routing resp {}", resp);
         List<InetSocketAddress> addrsToTry = new ArrayList<>();
-        if (!((AgentRoutingGetResponse) resp).disable_ip6()) {
-            for (String addr : ((AgentRoutingGetResponse) resp).targets6()) {
+        if (!((AgentRoutingGetResponse) resp).disable_ip6) {
+            for (String addr : ((AgentRoutingGetResponse) resp).targets6) {
                 addrsToTry.add(new InetSocketAddress(Inet6Address.getByName(addr), 5525));
             }
         }
-        for (String addr : ((AgentRoutingGetResponse) resp).targets4()) {
+        for (String addr : ((AgentRoutingGetResponse) resp).targets4) {
             addrsToTry.add(new InetSocketAddress(Inet4Address.getByName(addr), 5525));
         }
         Bootstrap b = new Bootstrap();
@@ -242,8 +242,8 @@ public class PlayitAgent implements Closeable {
                             logger.error("Failed to register control channel: {}", registerResp);
                             return;
                         }
-                        logger.debug("got register key {}", ((ProtoRegisterResponse) registerResp).key());
-                        authKey = HexFormat.of().parseHex(((ProtoRegisterResponse) registerResp).key());
+                        logger.debug("got register key {}", ((ProtoRegisterResponse) registerResp).key);
+                        authKey = HexFormat.of().parseHex(((ProtoRegisterResponse) registerResp).key);
                         var ch = ctx.channel();
                         var keyBuffer = ch.alloc().buffer(8 + authKey.length);
                         var lastRequestId = System.currentTimeMillis();

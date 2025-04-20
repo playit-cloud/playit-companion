@@ -1,4 +1,5 @@
 package gg.playit.proto.rest;
 
-public record AccountFeatures(boolean regional_tunnels) {
+public class AccountFeatures {
+    public boolean regional_tunnels;
 }

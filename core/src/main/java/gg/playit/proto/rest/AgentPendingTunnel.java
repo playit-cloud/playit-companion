@@ -1,11 +1,11 @@
 package gg.playit.proto.rest;
 
-public record AgentPendingTunnel(
-        String id,
-        String name,
-        String proto,
-        int port_count,
-        String tunnel_type,
-        boolean is_disabled,
-        int region_num) {
+public class AgentPendingTunnel {
+    public String id;
+    public String name;
+    public String proto;
+    public int port_count;
+    public String tunnel_type;
+    public boolean is_disabled;
+    public int region_num;
 }

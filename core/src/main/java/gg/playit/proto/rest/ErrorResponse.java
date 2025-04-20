@@ -1,4 +1,6 @@
 package gg.playit.proto.rest;
 
-public record ErrorResponse(String type, String message) {
+public class ErrorResponse {
+    public String type;
+    public String message;
 }

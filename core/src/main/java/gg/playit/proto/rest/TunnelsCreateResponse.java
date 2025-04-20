@@ -1,4 +1,5 @@
 package gg.playit.proto.rest;
 
-public record TunnelsCreateResponse(String id) {
+public class TunnelsCreateResponse {
+    public String id;
 }

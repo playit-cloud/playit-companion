@@ -1,4 +1,5 @@
 package gg.playit.proto.rest;
 
-public record ProtoRegisterResponse(String key) {
+public class ProtoRegisterResponse {
+    public String key;
 }

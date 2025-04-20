@@ -1,17 +1,17 @@
 package gg.playit.proto.rest;
 
-public record AgentTunnel(
-        String id,
-        String name,
-        long ip_num,
-        int region_num,
-        PortRange port,
-        String proto,
-        String local_ip,
-        int local_port,
-        String tunnel_type,
-        String assigned_domain,
-        String custom_domain,
-        AgentTunnelDisabled disabled,
-        String proxy_protocol) {
+public class AgentTunnel {
+    public String id;
+    public String name;
+    public long ip_num;
+    public int region_num;
+    public PortRange port;
+    public String proto;
+    public String local_ip;
+    public int local_port;
+    public String tunnel_type;
+    public String assigned_domain;
+    public String custom_domain;
+    public AgentTunnelDisabled disabled;
+    public String proxy_protocol;
 }

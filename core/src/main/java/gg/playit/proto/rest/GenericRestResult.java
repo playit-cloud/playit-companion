@@ -3,7 +3,9 @@ package gg.playit.proto.rest;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 
-public record GenericRestResult(String status, JsonElement data) {
+public class GenericRestResult {
+    public String status;
+    public JsonElement data;
     public Object specialize(Class<?> successClass, Class<?> failClass) {
         return switch (status) {
             case "success" -> ApiClient.GSON.fromJson(data, successClass);
