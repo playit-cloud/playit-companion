@@ -125,12 +125,11 @@ public class PlayitMod {
 
     public static void stop() {
         if (agent != null) {
+            timer.cancel();
+            timer = new Timer();
             try {
                 agent.close();
             } catch (IOException ignored) {}
-            timer.cancel();
-            timer = new Timer();
-
             agent = null;
         }
     }
