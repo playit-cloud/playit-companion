@@ -122,6 +122,7 @@ public class PlayitPlugin extends JavaPlugin {
                     }
                 } catch (Exception e) {
                     getSLF4JLogger().error("Error running agent", e);
+                    Bukkit.getServer().sendPlainMessage("An error has occurred in playit. Check logs for more details.");
                 }
             }, 0, 500, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
