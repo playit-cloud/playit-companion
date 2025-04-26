@@ -1,7 +1,7 @@
 name: PlayitPlugin
 version: ${version}
 main: gg.playit.PlayitPlugin
-description: Playit Companion
+description: PRIVATE BETA - The new Playit Plugin
 author: skyevg
 website: https://playit.gg
 api-version: '1.20.5'
