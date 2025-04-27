@@ -17,6 +17,9 @@
   "entrypoints": {
     "main": [
       "gg.playit.fabric.PlayitFabric"
+    ],
+    "voicechat": [
+      "gg.playit.SimpleVoiceChatCompat"
     ]
   },
   "mixins": [

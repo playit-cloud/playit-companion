@@ -26,6 +26,7 @@ dependencies {
     shadowCommon(project(path: ":mod-versions:1.19", configuration: "intermediary")) { transitive false }
     shadowCommon(project(path: ":mod-versions:1.21.5", configuration: "intermediary")) { transitive false }
     shadowCommon(project(":core")) { transitive false }
+    shadowCommon(project(":compat")) { transitive false }
 }
 
 processResources {

@@ -8,6 +8,10 @@ architectury {
     neoForge()
 }
 
+repositories {
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+}
+
 configurations {
     common
     shadowCommon // Don't use shadow from the shadow plugin since it *excludes* files.
@@ -19,10 +23,14 @@ configurations {
 dependencies {
     neoForge "net.neoforged:neoforge:${neoforge_version}"
 
+    implementation "de.maxhenkel.voicechat:voicechat-api:2.5.27"
+    implementation project(":compat")
+
     common(project(path: ":mod:common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":mod:common", configuration: "transformProductionNeoForge")) { transitive = false }
     shadowCommon(project(":mod-versions:1.21.5")) { transitive = false }
     shadowCommon(project(":core")) { transitive false }
+    shadowCommon(project(":compat")) { transitive false }
 }
 
 processResources {

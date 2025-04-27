@@ -14,6 +14,7 @@ pluginManagement {
 }
 
 include("core")
+include("compat")
 include("plugin")
 include("mod-versions")
 include("mod-versions:1.18")

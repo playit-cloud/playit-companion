@@ -4,6 +4,7 @@ import gg.playit.proto.control.AgentSessionId;
 import gg.playit.proto.control.c2s.AgentKeepAliveControlRequest;
 import gg.playit.proto.control.c2s.ControlRpcRequest;
 import gg.playit.proto.control.c2s.PingControlRequest;
+import gg.playit.proto.control.c2s.SetupUdpChannelControlRequest;
 import gg.playit.proto.control.s2c.*;
 import gg.playit.proto.rest.*;
 import io.netty.bootstrap.Bootstrap;
@@ -13,6 +14,7 @@ import io.netty.channel.epoll.EpollDatagramChannel;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
@@ -27,15 +29,23 @@ import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
+import java.security.InvalidParameterException;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class PlayitAgent implements Closeable {
     public enum ClaimStep {
         NotDone,
         Rejected,
         Accepted
+    }
+
+    private static final HashMap<String, CompatLayer> compatLayers = new HashMap<>();
+
+    public static void registerCompatLayer(CompatLayer compatLayer) {
+        compatLayers.put(compatLayer.protocolName(), compatLayer);
     }
 
     private final Platform platform;
@@ -45,6 +55,7 @@ public class PlayitAgent implements Closeable {
     private final Logger logger;
 
     private Channel controlChannel;
+    private DatagramChannel datagramChannel;
 
     private final Timer timer = new HashedWheelTimer();
 
@@ -145,7 +156,7 @@ public class PlayitAgent implements Closeable {
             cachedRundata = (AgentRundataResponse) rundataResp;
         }
         for (AgentTunnel tunnel : cachedRundata.tunnels) {
-            if (tunnel.tunnel_type.equals("minecraft-java")) {
+            if ("minecraft-java".equals(tunnel.tunnel_type)) {
                 var domain = tunnel.custom_domain;
                 if (domain == null)
                     domain = tunnel.assigned_domain;
@@ -185,6 +196,11 @@ public class PlayitAgent implements Closeable {
     @Override
     public void close() throws IOException {
         timer.stop();
+        if (datagramChannel != null) {
+            try {
+                datagramChannel.close().await();
+            } catch (InterruptedException ignored) {}
+        }
         if (controlChannel != null) {
             try {
                 controlChannel.close().await();
@@ -211,6 +227,8 @@ public class PlayitAgent implements Closeable {
         private Timeout establishReattemptTimeout;
         private Timeout keepaliveTimeout;
         private Timeout pingTimeout;
+
+        private DatagramChannelHandler datagramChannelHandler;
 
         public ControlChannelHandler(List<InetSocketAddress> addresses) {
             this.addresses = addresses;
@@ -284,6 +302,19 @@ public class PlayitAgent implements Closeable {
                             keepaliveTimeout = timer.newTimeout(timeout.task(), 10, TimeUnit.SECONDS);
                         }, 10, TimeUnit.SECONDS);
                     }
+                    if (datagramChannelHandler == null) {
+                        datagramChannelHandler = new DatagramChannelHandler();
+                        sendPacket(ctx.channel(), new ControlRpcRequest(System.currentTimeMillis(), new SetupUdpChannelControlRequest(id)));
+                    }
+                } else if (rpcResponse.content() instanceof UdpChannelDetailsControlResponse udpDetails) {
+                    datagramChannelHandler.authKey = udpDetails.token();
+                    datagramChannelHandler.dialAddress = udpDetails.tunnel_addr().address();
+                    logger.info("dialing {} for UDP", udpDetails.tunnel_addr().address());
+                    Bootstrap b = new Bootstrap();
+                    b.group(group);
+                    b.channel(epoll ? EpollDatagramChannel.class : NioDatagramChannel.class);
+                    b.handler(datagramChannelHandler);
+                    datagramChannel = (DatagramChannel) b.bind(0).channel();
                 } else {
                     logger.error("Unhandled response type!");
                 }
@@ -298,8 +329,25 @@ public class PlayitAgent implements Closeable {
                         var buf = ctx.alloc().buffer(token.length);
                         buf.writeBytes(token);
                         ctx.channel().writeAndFlush(buf);
-                        platform.newMinecraftConnection(newClient.peer_addr().address(), (SocketChannel) ctx.channel());
+                        for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                            if (tunnel.matches(newClient.connect_addr().address())) {
+                                if ("minecraft-java".equals(tunnel.tunnel_type)) {
+                                    platform.newMinecraftConnection(newClient.peer_addr().address(), (SocketChannel) ctx.channel());
+                                } else if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
+                                    socketLayer.tunnelAssigned(tunnel);
+                                } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
+                                    socketLayer.tunnelAssigned(tunnel);
+                                } else {
+                                    logger.error("No protocol registered for tunnel ID {}! Closing connection!", tunnel.id);
+                                    ctx.channel().close();
+                                }
+                                super.channelActive(ctx);
+                                return;
+                            }
+                        }
+                        logger.error("Could not match TCP connection to a tunnel! Closing connection!");
                         super.channelActive(ctx);
+                        ctx.channel().close();
                     }
 
                     @Override
@@ -336,12 +384,126 @@ public class PlayitAgent implements Closeable {
                 sendPacket(ctx.channel(), new ControlRpcRequest(1, new PingControlRequest(System.currentTimeMillis(), OptionalInt.empty(), Optional.empty())));
                 establishReattemptTimeout = timer.newTimeout(timeout.task(), 500, TimeUnit.MILLISECONDS);
             }, 500, TimeUnit.MILLISECONDS);
+
+            for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
+                    socketLayer.tunnelAssigned(tunnel);
+                } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
+                    socketLayer.tunnelAssigned(tunnel);
+                }
+            }
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             logger.error("Exception from handler!", cause);
             platform.notifyError();
+        }
+
+        private class DatagramChannelHandler extends SimpleChannelInboundHandler<DatagramPacket> {
+            private InetSocketAddress dialAddress;
+            private byte[] authKey;
+            private long lastEstablish = -1;
+            private Timeout datagramKeepaliveTimeout;
+
+            @Override
+            protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
+                if (!msg.sender().equals(dialAddress)) {
+                    logger.warn("Bad sender address for UDP, discarding unread");
+                    return;
+                }
+                var buf = msg.content();
+                var allExceptFooter = buf.readBytes(buf.readableBytes() - 8);
+                var footer = buf.readLong();
+                RoutableDatagramPacket packet;
+                if (footer == 0xd01fe6830ddce781L) {
+                    lastEstablish = System.nanoTime();
+                    return;
+                } else if (footer == 0x5cb867cf788173b2L || footer == 0x4448474f48414344L) {
+                    var contents = new byte[allExceptFooter.readableBytes() - 12];
+                    allExceptFooter.readBytes(contents);
+                    var srcIp = new byte[4];
+                    var dstIp = new byte[4];
+                    allExceptFooter.readBytes(srcIp);
+                    allExceptFooter.readBytes(dstIp);
+                    var srcPort = allExceptFooter.readUnsignedShort();
+                    var dstPort = allExceptFooter.readUnsignedShort();
+                    var src = new InetSocketAddress(Inet4Address.getByAddress(srcIp), srcPort);
+                    var dst = new InetSocketAddress(Inet4Address.getByAddress(dstIp), dstPort);
+                    packet = new RoutableDatagramPacket(src, dst, contents);
+                } else if (footer == 0x6668676f68616366L) {
+                    var contents = new byte[allExceptFooter.readableBytes() - 40];
+                    allExceptFooter.readBytes(contents);
+                    var srcIp = new byte[16];
+                    var dstIp = new byte[16];
+                    allExceptFooter.readBytes(srcIp);
+                    allExceptFooter.readBytes(dstIp);
+                    var srcPort = allExceptFooter.readUnsignedShort();
+                    var dstPort = allExceptFooter.readUnsignedShort();
+                    var src = new InetSocketAddress(Inet6Address.getByAddress(srcIp), srcPort);
+                    var dst = new InetSocketAddress(Inet6Address.getByAddress(dstIp), dstPort);
+                    packet = new RoutableDatagramPacket(src, dst, contents);
+                } else {
+                    logger.warn("Bad UDP footer, discarding!");
+                    return;
+                }
+                for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                    if (tunnel.matches(packet.destination())) {
+                        if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
+                            datagramLayer.receivedPacket(packet);
+                        } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
+                            datagramLayer.receivedPacket(packet);
+                        }
+                        return;
+                    }
+                }
+                logger.error("Could not match UDP packet to a tunnel!");
+            }
+
+            private void sendKey(Channel ch) throws IOException {
+                var buffer = ch.alloc().buffer(authKey.length);
+                buffer.writeBytes(authKey);
+                ch.writeAndFlush(new DatagramPacket(buffer, dialAddress));
+            }
+
+            @Override
+            public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                super.channelActive(ctx);
+                Consumer<RoutableDatagramPacket> sendPacket = packet -> {
+                    var ch = ctx.channel();
+                    var buffer = ch.alloc().buffer(packet.contents().length + 48);
+                    buffer.writeBytes(packet.contents());
+                    if (packet.source().getAddress() instanceof Inet4Address sourceAddress && packet.destination().getAddress() instanceof Inet4Address destinationAddress) {
+                        buffer.writeBytes(sourceAddress.getAddress());
+                        buffer.writeBytes(destinationAddress.getAddress());
+                        buffer.writeShort(packet.source().getPort());
+                        buffer.writeShort(packet.destination().getPort());
+                        buffer.writeLong(0x5cb867cf788173b2L);
+                    } else if (packet.source().getAddress() instanceof Inet6Address sourceAddress && packet.destination().getAddress() instanceof Inet6Address destinationAddress) {
+                        buffer.writeBytes(sourceAddress.getAddress());
+                        buffer.writeBytes(destinationAddress.getAddress());
+                        buffer.writeShort(packet.source().getPort());
+                        buffer.writeShort(packet.destination().getPort());
+                        buffer.writeInt(0);
+                        buffer.writeLong(0x6668676f68616366L);
+                    } else {
+                        throw new InvalidParameterException("Bad address family for routing!");
+                    }
+                    ch.writeAndFlush(new DatagramPacket(buffer, dialAddress));
+                };
+                for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                    if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
+                        datagramLayer.tunnelAssigned(sendPacket, tunnel);
+                    } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
+                        datagramLayer.tunnelAssigned(sendPacket, tunnel);
+                    }
+                }
+                sendKey(ctx.channel());
+                datagramKeepaliveTimeout = timer.newTimeout(timeout -> {
+                    sendKey(ctx.channel());
+                    datagramKeepaliveTimeout = timer.newTimeout(timeout.task(), lastEstablish == -1 ? 500 : 1000, TimeUnit.MILLISECONDS);
+                }, 500, TimeUnit.MILLISECONDS);
+            }
         }
     }
 }

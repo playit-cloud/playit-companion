@@ -22,14 +22,22 @@ configurations {
     developmentForge.extendsFrom common
 }
 
+repositories {
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+}
+
 dependencies {
     forge "net.minecraftforge:forge:${forge_version}"
+
+    implementation "de.maxhenkel.voicechat:voicechat-api:2.5.27"
+    implementation project(":compat")
 
     common(project(path: ":mod:common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":mod:common", configuration: "transformProductionForge")) { transitive = false }
     shadowCommon(project(path: ":mod-versions:1.18", configuration: "srg")) { transitive = false }
     shadowCommon(project(path: ":mod-versions:1.19", configuration: "srg")) { transitive = false }
     shadowCommon(project(":core")) { transitive false }
+    shadowCommon(project(":compat")) { transitive false }
 }
 
 processResources {

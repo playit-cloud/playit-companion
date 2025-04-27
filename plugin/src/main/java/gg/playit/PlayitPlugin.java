@@ -26,6 +26,9 @@ public class PlayitPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         try {
+            SimpleVoiceChatCompatPaper.tryRegister(this);
+        } catch (Throwable ignored) {}
+        try {
             var agentKeyPath = getDataPath().resolve("agent_key.txt");
 
             var clazz = (Class<? extends ChannelHandler>) Class.forName("io.netty.bootstrap.ServerBootstrap$ServerBootstrapAcceptor"); // This inner class is private

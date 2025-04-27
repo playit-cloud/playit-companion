@@ -17,6 +17,7 @@ repositories {
             url = 'https://repo.papermc.io/repository/maven-public/'
         }
     }
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
     mavenCentral()
 }
 
@@ -28,7 +29,13 @@ dependencies {
     // Other Dependencies
     paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
 
+    implementation "de.maxhenkel.voicechat:voicechat-api:2.5.27"
+
     shadow(implementation(project(":core"))) {
+        transitive = false;
+    }
+
+    shadow(implementation(project(":compat"))) {
         transitive = false;
     }
 }

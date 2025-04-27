@@ -1,0 +1,32 @@
+plugins {
+    id 'java'
+}
+
+group = rootProject.group
+version = rootProject.version
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+}
+
+dependencies {
+    implementation 'io.netty:netty-all:4.1.25.Final'
+    implementation 'com.google.code.gson:gson:2.12.1'
+    implementation 'org.slf4j:slf4j-api:2.0.17'
+    implementation project(":core")
+    implementation "de.maxhenkel.voicechat:voicechat-api:2.5.27"
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+compileJava {
+    sourceCompatibility = 17
+    targetCompatibility = 17
+    options.release = 17
+}
