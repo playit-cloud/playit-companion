@@ -29,7 +29,7 @@ dependencies {
     // Other Dependencies
     paperweight.paperDevBundle("1.21.4-R0.1-SNAPSHOT")
 
-    implementation "de.maxhenkel.voicechat:voicechat-api:2.5.27"
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:2.5.27"
 
     shadow(implementation(project(":core"))) {
         transitive = false;
