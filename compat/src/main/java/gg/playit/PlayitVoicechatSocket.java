@@ -78,8 +78,12 @@ public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramP
     }
 
     @Override
-    public void tunnelAssigned(Consumer<RoutableDatagramPacket> packetSender, AgentTunnel tunnel) {
+    public void datagramStarted(Consumer<RoutableDatagramPacket> packetSender) {
         this.packetSender = packetSender;
+    }
+
+    @Override
+    public void tunnelUpdated(AgentTunnel tunnel) {
         connectionAddress = tunnel.assigned_domain + ":" + tunnel.port.from;
     }
 
@@ -90,7 +94,9 @@ public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramP
     }
 
     public void setVoiceHost(VoiceHostEvent ev) {
-        ev.setVoiceHost(connectionAddress);
+        if (connectionAddress != null) {
+            ev.setVoiceHost(connectionAddress);
+        }
     }
 
     @Override
@@ -98,12 +104,5 @@ public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramP
         var buf = new byte[msg.content().readableBytes()];
         msg.content().readBytes(buf);
         queue.add(new PlayitDatagramPacket(buf, System.currentTimeMillis(), msg.sender()));
-    }
-
-    @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        super.channelActive(ctx);
-        var localAddr = (InetSocketAddress) ctx.channel().localAddress();
-        connectionAddress = localAddr.getAddress().getHostAddress() + ":" + localAddr.getPort();
     }
 }

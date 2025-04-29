@@ -408,9 +408,9 @@ public class PlayitAgent implements Closeable {
                 if (tunnel.proto.equals("udp"))
                     continue;
                 if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
-                    socketLayer.tunnelAssigned(tunnel);
+                    socketLayer.tunnelUpdated(tunnel);
                 } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
-                    socketLayer.tunnelAssigned(tunnel);
+                    socketLayer.tunnelUpdated(tunnel);
                 }
             }
 
@@ -419,6 +419,19 @@ public class PlayitAgent implements Closeable {
                 var rundataResp = apiClient.agentsRundata();
                 if (!(rundataResp instanceof AgentRundataResponse))
                     throw new IOException("rundata error: " + rundataResp.toString());
+                if (!rundataResp.equals(cachedRundata)) {
+                    for (AgentTunnel tunnel : ((AgentRundataResponse) rundataResp).tunnels) {
+                        if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer && !tunnel.proto.equals("tcp")) {
+                            datagramLayer.tunnelUpdated(tunnel);
+                        } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer && !tunnel.proto.equals("tcp")) {
+                            datagramLayer.tunnelUpdated(tunnel);
+                        } else if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer && !tunnel.proto.equals("udp")) {
+                            socketLayer.tunnelUpdated(tunnel);
+                        } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer && !tunnel.proto.equals("udp")) {
+                            socketLayer.tunnelUpdated(tunnel);
+                        }
+                    }
+                }
                 cachedRundata = (AgentRundataResponse) rundataResp;
             }, 10, TimeUnit.SECONDS);
         }
@@ -520,13 +533,18 @@ public class PlayitAgent implements Closeable {
                     }
                     ch.writeAndFlush(new DatagramPacket(buffer, dialAddress));
                 };
+                for (CompatLayer compatLayer : compatLayers.values()) {
+                    if (compatLayer instanceof DatagramCompatLayer datagramLayer) {
+                         datagramLayer.datagramStarted(sendPacket);
+                    }
+                }
                 for (AgentTunnel tunnel : cachedRundata.tunnels) {
                     if (tunnel.proto.equals("tcp"))
                         continue;
                     if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
-                        datagramLayer.tunnelAssigned(sendPacket, tunnel);
+                        datagramLayer.tunnelUpdated(tunnel);
                     } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
-                        datagramLayer.tunnelAssigned(sendPacket, tunnel);
+                        datagramLayer.tunnelUpdated(tunnel);
                     }
                 }
                 sendKey(ctx.channel());
