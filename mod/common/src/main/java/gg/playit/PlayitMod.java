@@ -69,12 +69,12 @@ public class PlayitMod {
                                 .withHoverEvent(VersionArbitrage.showText(VersionArbitrage.translatable("chat.copy.click")))
                                 .withColor(ChatFormatting.GREEN)
                         );
-                VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.domain", addrComponent));
+                VersionArbitrage.broadcast(server, VersionArbitrage.translatable("playit.domain", addrComponent));
             }
 
             @Override
             public void notifyError() {
-                VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.error"));
+                VersionArbitrage.broadcast(server, VersionArbitrage.translatable("playit.error"));
             }
 
             @Override
@@ -91,7 +91,7 @@ public class PlayitMod {
                             .withHoverEvent(VersionArbitrage.showText(VersionArbitrage.translatable("chat.link.open")))
                             .withColor(ChatFormatting.BLUE)
                     );
-            VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.claim", urlComponent));
+            VersionArbitrage.broadcast(server, VersionArbitrage.translatable("playit.claim", urlComponent));
         }
 
         timer.scheduleAtFixedRate(new TimerTask() {
@@ -105,7 +105,7 @@ public class PlayitMod {
                             timer = new Timer();
                             break;
                         case Rejected:
-                            VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.rejected"));
+                            VersionArbitrage.broadcast(server, VersionArbitrage.translatable("playit.rejected"));
                             timer.cancel();
                             timer = new Timer();
                             break;
@@ -114,7 +114,7 @@ public class PlayitMod {
                     }
                 } catch (Exception e) {
                     LOGGER.error("Error running agent", e);
-                    VersionArbitrage.broadcast(server.getPlayerList(), VersionArbitrage.translatable("playit.error"));
+                    VersionArbitrage.broadcast(server, VersionArbitrage.translatable("playit.error"));
                     timer.cancel();
                 }
             }

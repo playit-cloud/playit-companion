@@ -1,6 +1,7 @@
 package gg.playit;
 
 import net.minecraft.network.chat.*;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.players.PlayerList;
 
 import java.util.function.UnaryOperator;
@@ -119,21 +120,21 @@ public class VersionArbitrage {
         throw new RuntimeException("Could not create Component.translatable!");
     }
 
-    public static void broadcast(PlayerList playerList, Component message) {
+    public static void broadcast(MinecraftServer minecraftServer, Component message) {
         try {
-            Version118.broadcast(playerList, message);
+            Version118.broadcast(minecraftServer, message);
             return;
         } catch (Throwable ignored) {}
         try {
-            Version119.broadcast(playerList, message);
+            Version119.broadcast(minecraftServer, message);
             return;
         } catch (Throwable ignored) {}
         try {
-            Version120.broadcast(playerList, message);
+            Version120.broadcast(minecraftServer, message);
             return;
         } catch (Throwable ignored) {}
         try {
-            Version1215.broadcast(playerList, message);
+            Version1215.broadcast(minecraftServer, message);
             return;
         } catch (Throwable ignored) {}
         throw new RuntimeException("Could not call PlayerList.broadcastSystemMessage!");

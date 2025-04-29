@@ -144,6 +144,25 @@ public class PlayitAgent implements Closeable {
         ));
         if (!(tunnelResp instanceof TunnelsCreateResponse))
             throw new IOException("tunnel creation error: " + tunnelResp.toString());
+        for (CompatLayer compatLayer : compatLayers.values()) {
+            String tunnelType;
+            if (compatLayer instanceof SocketCompatLayer) {
+                tunnelType = "tcp";
+            } else {
+                tunnelType = "udp";
+            }
+            var tunnelLayerResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
+                    compatLayer.protocolName(),
+                    null,
+                    tunnelType,
+                    1,
+                    new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
+                    true,
+                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+            ));
+            if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
+                throw new IOException("tunnel creation error for compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
+        }
         claimCode = null;
         return ClaimStep.Accepted;
     }
@@ -394,6 +413,14 @@ public class PlayitAgent implements Closeable {
                     socketLayer.tunnelAssigned(tunnel);
                 }
             }
+
+            timer.newTimeout(timeout -> {
+                timer.newTimeout(timeout.task(), 10, TimeUnit.SECONDS);
+                var rundataResp = apiClient.agentsRundata();
+                if (!(rundataResp instanceof AgentRundataResponse))
+                    throw new IOException("rundata error: " + rundataResp.toString());
+                cachedRundata = (AgentRundataResponse) rundataResp;
+            }, 10, TimeUnit.SECONDS);
         }
 
         @Override

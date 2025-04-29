@@ -2,6 +2,7 @@ package gg.playit;
 
 import net.minecraft.Util;
 import net.minecraft.network.chat.*;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.players.PlayerList;
 
 import java.util.function.UnaryOperator;
@@ -36,7 +37,12 @@ public class Version118 {
         return new TranslatableComponent(text, args);
     }
 
-    public static void broadcast(PlayerList playerList, Component message) {
-        playerList.broadcastMessage(message, ChatType.SYSTEM, Util.NIL_UUID);
+    public static void broadcast(MinecraftServer minecraftServer, Component message) {
+        var playerList = minecraftServer.getPlayerList();
+        if (playerList != null) {
+            playerList.broadcastMessage(message, ChatType.SYSTEM, Util.NIL_UUID);
+        } else {
+            minecraftServer.sendMessage(message, Util.NIL_UUID);
+        }
     }
 }
