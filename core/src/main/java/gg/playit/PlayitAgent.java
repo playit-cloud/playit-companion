@@ -334,9 +334,9 @@ public class PlayitAgent implements Closeable {
                                 if ("minecraft-java".equals(tunnel.tunnel_type)) {
                                     platform.newMinecraftConnection(newClient.peer_addr().address(), (SocketChannel) ctx.channel());
                                 } else if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
-                                    socketLayer.tunnelAssigned(tunnel);
+                                    socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
                                 } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
-                                    socketLayer.tunnelAssigned(tunnel);
+                                    socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
                                 } else {
                                     logger.error("No protocol registered for tunnel ID {}! Closing connection!", tunnel.id);
                                     ctx.channel().close();
@@ -386,6 +386,8 @@ public class PlayitAgent implements Closeable {
             }, 500, TimeUnit.MILLISECONDS);
 
             for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                if (tunnel.proto.equals("udp"))
+                    continue;
                 if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
                     socketLayer.tunnelAssigned(tunnel);
                 } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
@@ -492,6 +494,8 @@ public class PlayitAgent implements Closeable {
                     ch.writeAndFlush(new DatagramPacket(buffer, dialAddress));
                 };
                 for (AgentTunnel tunnel : cachedRundata.tunnels) {
+                    if (tunnel.proto.equals("tcp"))
+                        continue;
                     if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
                         datagramLayer.tunnelAssigned(sendPacket, tunnel);
                     } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
