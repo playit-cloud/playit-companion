@@ -27,6 +27,15 @@ public class PlayitMod {
     public static void init() {
     }
 
+    public static void startAsync(MinecraftServer server, ServerConnectionListenerChildHandlerAccessor accessor) {
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                start(server, accessor);
+            }
+        }, 0);
+    }
+
     public static void start(MinecraftServer server, ServerConnectionListenerChildHandlerAccessor accessor) {
         var agentKeyPath = Agnos.configDir().resolve("playit-companion").resolve("agent_key.txt");
         agent = new PlayitAgent(new Platform() {

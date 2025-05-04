@@ -19,9 +19,7 @@ public class ServerConnectionListenerMixin {
 
     @Redirect(method = "startTcpServerListener", at = @At(value = "INVOKE", target = "Lio/netty/bootstrap/ServerBootstrap;childHandler(Lio/netty/channel/ChannelHandler;)Lio/netty/bootstrap/ServerBootstrap;"))
     ServerBootstrap interceptHandler(ServerBootstrap instance, ChannelHandler childHandler) {
-        Util.ioPool().execute(() -> {
-            PlayitMod.start(server, (ServerConnectionListenerChildHandlerAccessor) childHandler);
-        });
+        PlayitMod.startAsync(server, (ServerConnectionListenerChildHandlerAccessor) childHandler);
         return instance.childHandler(childHandler);
     }
 }

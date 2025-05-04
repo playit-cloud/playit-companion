@@ -2,7 +2,6 @@ package gg.playit;
 
 import net.minecraft.network.chat.*;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.players.PlayerList;
 
 import java.net.URI;
 import java.util.function.UnaryOperator;
