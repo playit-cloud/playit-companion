@@ -26,9 +26,9 @@ import org.slf4j.Logger;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
-import java.net.InetSocketAddress;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.InvalidParameterException;
 import java.security.SecureRandom;
 import java.util.*;
@@ -48,11 +48,11 @@ public class PlayitAgent implements Closeable {
         compatLayers.put(compatLayer.protocolName(), compatLayer);
     }
 
-    private final Platform platform;
-    private final ApiClient apiClient = new ApiClient();
-    private final EventLoopGroup group;
-    private final boolean epoll;
-    private final Logger logger;
+    public final Platform platform;
+    public final ApiClient apiClient = new ApiClient();
+    public final EventLoopGroup group;
+    public final boolean epoll;
+    public final Logger logger;
 
     private Channel controlChannel;
     private DatagramChannel datagramChannel;
@@ -63,6 +63,8 @@ public class PlayitAgent implements Closeable {
     private String secretKey;
 
     private AgentRundataResponse cachedRundata;
+
+    private final HashMap<String, CompatLayer> compatLayerOverlay = new HashMap<>();
 
     public PlayitAgent(Platform platform) {
         this.platform = platform;
@@ -93,9 +95,96 @@ public class PlayitAgent implements Closeable {
         } catch (Exception e) {
             logger.warn("Failed to read agent key from file", e);
         }
+        try {
+            var path = platform.getCustomTunnelsConfigPath();
+            if (Files.exists(path)) {
+                var config = QDCSS.load(path);
+                var configMap = config.flatten();
+                for (var key: configMap.keySet()) {
+                    if (key.endsWith(".enabled")) {
+                        var tunnel = key.substring(0, key.length() - 8);
+                        try {
+                            if (config.getBoolean(key).orElse(false)) {
+                                var ip = config.get(tunnel + ".ip");
+                                if (ip.isEmpty()) {
+                                    logger.error("Tunnel lacks ip but is enabled: {}", tunnel);
+                                    continue;
+                                }
+                                var port = config.getInt(tunnel + ".port");
+                                if (port.isEmpty()) {
+                                    logger.error("Tunnel lacks port but is enabled: {}", tunnel);
+                                    continue;
+                                }
+                                var address = new InetSocketAddress(InetAddress.getByName(ip.get()), port.get());
+                                var protocol = config.get(tunnel + ".protocol");
+                                if (protocol.isEmpty()) {
+                                    logger.error("Tunnel lacks protocol but is enabled: {}", tunnel);
+                                    continue;
+                                }
+                                switch (protocol.get()) {
+                                    case "tcp":
+                                        var tcpLayer = new ForwardingSocketCompatLayer(tunnel, address, this);
+                                        compatLayerOverlay.put(tunnel, tcpLayer);
+                                        break;
+                                    case "udp":
+                                        var udpLayer = new ForwardingDatagramCompatLayer(tunnel, address, this);
+                                        compatLayerOverlay.put(tunnel, udpLayer);
+                                        break;
+                                    default:
+                                        logger.error("Invalid protocol for tunnel {}: {}", tunnel, protocol);
+                                }
+                            } else {
+                                compatLayerOverlay.put(tunnel, new DisabledCompatLayer());
+                            }
+                        } catch (QDCSS.BadValueException | UnknownHostException e) {
+                            logger.error("Error parsing config for tunnel {}", tunnel, e);
+                        }
+                    }
+                }
+            } else {
+                var template = PlayitAgent.class.getResource("/config-template.css");
+                try (var stream = template.openStream()) {
+                    Files.writeString(path, new String(stream.readAllBytes(), StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to read custom tunnels configuration", e);
+        }
         if (secretKey == null) {
             claimCode = makeClaimCode();
         }
+    }
+
+    private SocketCompatLayer getSocketLayer(AgentTunnel tunnel) {
+        if (compatLayerOverlay.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
+            return socketLayer;
+        }
+        if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer && !(compatLayerOverlay.containsKey(tunnel.tunnel_type))) {
+            return socketLayer;
+        }
+        if (compatLayerOverlay.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
+            return socketLayer;
+        }
+        if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer && !(compatLayerOverlay.containsKey(tunnel.name))) {
+            return socketLayer;
+        }
+        return null;
+    }
+
+    private DatagramCompatLayer getDatagramLayer(AgentTunnel tunnel) {
+        if (compatLayerOverlay.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
+            return datagramLayer;
+        }
+        if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer && !(compatLayerOverlay.containsKey(tunnel.tunnel_type))) {
+            return datagramLayer;
+        }
+        if (compatLayerOverlay.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
+            return datagramLayer;
+        }
+        if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer && !(compatLayerOverlay.containsKey(tunnel.name))) {
+            return datagramLayer;
+        }
+        return null;
     }
 
     public String getClaimCode() {
@@ -145,6 +234,9 @@ public class PlayitAgent implements Closeable {
         if (!(tunnelResp instanceof TunnelsCreateResponse))
             throw new IOException("tunnel creation error: " + tunnelResp.toString());
         for (CompatLayer compatLayer : compatLayers.values()) {
+            if (compatLayerOverlay.containsKey(compatLayer.protocolName())) {
+                continue;
+            }
             String tunnelType;
             if (compatLayer instanceof SocketCompatLayer) {
                 tunnelType = "tcp";
@@ -162,6 +254,27 @@ public class PlayitAgent implements Closeable {
             ));
             if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
                 throw new IOException("tunnel creation error for compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
+        }
+        for (CompatLayer compatLayer : compatLayerOverlay.values()) {
+            String tunnelType;
+            if (compatLayer instanceof SocketCompatLayer) {
+                tunnelType = "tcp";
+            } else if (compatLayer instanceof DatagramCompatLayer) {
+                tunnelType = "udp";
+            } else {
+                continue;
+            }
+            var tunnelLayerResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
+                    compatLayer.protocolName(),
+                    null,
+                    tunnelType,
+                    1,
+                    new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
+                    true,
+                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+            ));
+            if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
+                throw new IOException("tunnel creation error for configured compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
         }
         claimCode = null;
         return ClaimStep.Accepted;
@@ -350,12 +463,11 @@ public class PlayitAgent implements Closeable {
                         ctx.channel().writeAndFlush(buf);
                         for (AgentTunnel tunnel : cachedRundata.tunnels) {
                             if (tunnel.matches(newClient.connect_addr().address())) {
-                                if ("minecraft-java".equals(tunnel.tunnel_type)) {
+                                var socketLayer = getSocketLayer(tunnel);
+                                if (socketLayer != null) {
+                                    socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
+                                } else if ("minecraft-java".equals(tunnel.tunnel_type)) {
                                     platform.newMinecraftConnection(newClient.peer_addr().address(), (SocketChannel) ctx.channel());
-                                } else if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
-                                    socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
-                                } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
-                                    socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
                                 } else {
                                     logger.error("No protocol registered for tunnel ID {}! Closing connection!", tunnel.id);
                                     ctx.channel().close();
@@ -407,9 +519,8 @@ public class PlayitAgent implements Closeable {
             for (AgentTunnel tunnel : cachedRundata.tunnels) {
                 if (tunnel.proto.equals("udp"))
                     continue;
-                if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer) {
-                    socketLayer.tunnelUpdated(tunnel);
-                } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer) {
+                var socketLayer = getSocketLayer(tunnel);
+                if (socketLayer != null) {
                     socketLayer.tunnelUpdated(tunnel);
                 }
             }
@@ -421,14 +532,17 @@ public class PlayitAgent implements Closeable {
                     throw new IOException("rundata error: " + rundataResp.toString());
                 if (!rundataResp.equals(cachedRundata)) {
                     for (AgentTunnel tunnel : ((AgentRundataResponse) rundataResp).tunnels) {
-                        if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer && !tunnel.proto.equals("tcp")) {
-                            datagramLayer.tunnelUpdated(tunnel);
-                        } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer && !tunnel.proto.equals("tcp")) {
-                            datagramLayer.tunnelUpdated(tunnel);
-                        } else if (compatLayers.get(tunnel.tunnel_type) instanceof SocketCompatLayer socketLayer && !tunnel.proto.equals("udp")) {
-                            socketLayer.tunnelUpdated(tunnel);
-                        } else if (compatLayers.get(tunnel.name) instanceof SocketCompatLayer socketLayer && !tunnel.proto.equals("udp")) {
-                            socketLayer.tunnelUpdated(tunnel);
+                        if (!tunnel.proto.equals("tcp")) {
+                            var datagramLayer = getDatagramLayer(tunnel);
+                            if (datagramLayer != null) {
+                                datagramLayer.tunnelUpdated(tunnel);
+                            }
+                        }
+                        if (!tunnel.proto.equals("udp")) {
+                            var socketLayer = getSocketLayer(tunnel);
+                            if (socketLayer != null) {
+                                socketLayer.tunnelUpdated(tunnel);
+                            }
                         }
                     }
                 }
@@ -491,9 +605,8 @@ public class PlayitAgent implements Closeable {
                 }
                 for (AgentTunnel tunnel : cachedRundata.tunnels) {
                     if (tunnel.matches(packet.destination())) {
-                        if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
-                            datagramLayer.receivedPacket(packet);
-                        } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
+                        var datagramLayer = getDatagramLayer(tunnel);
+                        if (datagramLayer != null) {
                             datagramLayer.receivedPacket(packet);
                         }
                         return;
@@ -534,16 +647,20 @@ public class PlayitAgent implements Closeable {
                     ch.writeAndFlush(new DatagramPacket(buffer, dialAddress));
                 };
                 for (CompatLayer compatLayer : compatLayers.values()) {
-                    if (compatLayer instanceof DatagramCompatLayer datagramLayer) {
+                    if (compatLayer instanceof DatagramCompatLayer datagramLayer && !compatLayerOverlay.containsKey(compatLayer.protocolName())) {
                          datagramLayer.datagramStarted(sendPacket);
+                    }
+                }
+                for (CompatLayer compatLayer : compatLayerOverlay.values()) {
+                    if (compatLayer instanceof DatagramCompatLayer datagramLayer) {
+                        datagramLayer.datagramStarted(sendPacket);
                     }
                 }
                 for (AgentTunnel tunnel : cachedRundata.tunnels) {
                     if (tunnel.proto.equals("tcp"))
                         continue;
-                    if (compatLayers.get(tunnel.tunnel_type) instanceof DatagramCompatLayer datagramLayer) {
-                        datagramLayer.tunnelUpdated(tunnel);
-                    } else if (compatLayers.get(tunnel.name) instanceof DatagramCompatLayer datagramLayer) {
+                    var datagramLayer = getDatagramLayer(tunnel);
+                    if (datagramLayer != null) {
                         datagramLayer.tunnelUpdated(tunnel);
                     }
                 }

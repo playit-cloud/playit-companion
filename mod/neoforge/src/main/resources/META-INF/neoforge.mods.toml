@@ -3,7 +3,7 @@ loaderVersion = "*"
 license = "MIT"
 
 [[mods]]
-modId = "playit-companion"
+modId = "playit_companion"
 version = "${version}"
 displayName = "Playit Companion"
 credits = "skyevg"
@@ -15,14 +15,14 @@ PRIVATE BETA - The new Playit Plugin
 [[mixins]]
 config = "playit-companion.mixins.json"
 
-[[dependencies.playit-companion]]
+[[dependencies.playit_companion]]
 modId = "neoforge"
 mandatory = true
 versionRange = "*"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.playit-companion]]
+[[dependencies.playit_companion]]
 modId = "minecraft"
 mandatory = true
 versionRange = "[1.18,)"

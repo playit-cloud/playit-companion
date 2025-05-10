@@ -1,0 +1,19 @@
+/* Yes, the configuration file syntax is Cascading Style Sheets. Don't worry too much about it. */
+
+/* A custom tunnel definition looks like this: */
+/* Requires a tunnel named "bluemap" */
+#bluemap {
+    enabled: false; /* change to "true" to enable */
+    protocol: tcp;
+    ip: 127.0.0.1;
+    port: 8100;
+}
+
+/* Or like this: */
+/* Requires a tunnel with protocol "Minecraft Bedrock" (name doesn't matter, as this will match protocol) */
+#minecraft-bedrock {
+    enabled: false; /* change to "true" to enable */
+    protocol: udp;
+    ip: 127.0.0.1;
+    port: 19132;
+}

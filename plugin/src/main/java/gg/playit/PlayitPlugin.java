@@ -16,6 +16,7 @@ import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +31,7 @@ public class PlayitPlugin extends JavaPlugin {
         } catch (Throwable ignored) {}
         try {
             var agentKeyPath = getDataPath().resolve("agent_key.txt");
+            var configPath = getDataPath().resolve("custom_tunnels.css");
 
             var clazz = (Class<? extends ChannelHandler>) Class.forName("io.netty.bootstrap.ServerBootstrap$ServerBootstrapAcceptor"); // This inner class is private
             var nmsServer = ((CraftServer) Bukkit.getServer()).getServer();
@@ -102,6 +104,11 @@ public class PlayitPlugin extends JavaPlugin {
                 @Override
                 public boolean shouldUseEpoll() {
                     return Epoll.isAvailable() && nmsServer.isEpollEnabled();
+                }
+
+                @Override
+                public Path getCustomTunnelsConfigPath() {
+                    return configPath;
                 }
             });
 

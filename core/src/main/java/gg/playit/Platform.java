@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Path;
 
 public interface Platform {
     Logger getLogger();
@@ -15,4 +16,5 @@ public interface Platform {
     void tunnelAddressInformation(String addr);
     void notifyError();
     boolean shouldUseEpoll();
+    Path getCustomTunnelsConfigPath();
 }

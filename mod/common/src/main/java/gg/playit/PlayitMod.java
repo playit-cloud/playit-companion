@@ -14,11 +14,12 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Timer;
 import java.util.TimerTask;
 
 public class PlayitMod {
-    public static final String MOD_ID = "playit-companion";
+    public static final String MOD_ID = "playit_companion";
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayitMod.MOD_ID);
 
     private static PlayitAgent agent;
@@ -38,6 +39,7 @@ public class PlayitMod {
 
     public static void start(MinecraftServer server, ServerConnectionListenerChildHandlerAccessor accessor) {
         var agentKeyPath = Agnos.configDir().resolve("playit-companion").resolve("agent_key.txt");
+        var configPath = Agnos.configDir().resolve("playit-companion").resolve("custom_tunnels.css");
         agent = new PlayitAgent(new Platform() {
             @Override
             public Logger getLogger() {
@@ -89,6 +91,11 @@ public class PlayitMod {
             @Override
             public boolean shouldUseEpoll() {
                 return Epoll.isAvailable() && server.isEpollEnabled();
+            }
+
+            @Override
+            public Path getCustomTunnelsConfigPath() {
+                return configPath;
             }
         });
 

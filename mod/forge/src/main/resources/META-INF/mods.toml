@@ -3,7 +3,7 @@ loaderVersion = "*"
 license = "MIT"
 
 [[mods]]
-modId = "playit-companion"
+modId = "playit_companion"
 version = "${version}"
 displayName = "Playit Companion"
 credits = "skyevg"
@@ -12,14 +12,14 @@ description = '''
 PRIVATE BETA - The new Playit Plugin
 '''
 
-[[dependencies.playit-companion]]
+[[dependencies.playit_companion]]
 modId = "forge"
 mandatory = true
 versionRange = "*"
 ordering = "NONE"
 side = "BOTH"
 
-[[dependencies.playit-companion]]
+[[dependencies.playit_companion]]
 modId = "minecraft"
 mandatory = true
 versionRange = "[1.18,1.21)"

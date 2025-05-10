@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "playit-companion",
+  "id": "playit_companion",
   "version": "${version}",
   "name": "Playit Companion",
   "description": "PRIVATE BETA - The new Playit Plugin",
