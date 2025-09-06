@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramPacket> implements VoicechatSocket, DatagramCompatLayer {
     private Consumer<RoutableDatagramPacket> packetSender;
     private final BlockingQueue<PlayitDatagramPacket> queue = new LinkedBlockingQueue<>();
-    private final HashMap<SimpleSocketAddress, InetSocketAddress> reverseNat = new HashMap<>();
+    private final HashMap<SimpleSocketAddress, InetSocketAddressWithUdpFlowExtension> reverseNat = new HashMap<>();
     private String connectionAddress;
 
     private NioEventLoopGroup group;
@@ -46,7 +46,7 @@ public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramP
     public void send(byte[] data, SocketAddress address) throws Exception {
         var sourceAddr = reverseNat.get(SimpleSocketAddress.from(address));
         if (sourceAddr != null) {
-            packetSender.accept(new RoutableDatagramPacket(sourceAddr, (InetSocketAddress) address, data));
+            packetSender.accept(new RoutableDatagramPacket(sourceAddr.flow(), sourceAddr.address(), (InetSocketAddress) address, data));
         } else {
             var buf = datagramChannel.alloc().buffer(data.length);
             buf.writeBytes(data);
@@ -89,7 +89,7 @@ public class PlayitVoicechatSocket extends SimpleChannelInboundHandler<DatagramP
 
     @Override
     public void receivedPacket(RoutableDatagramPacket packet) {
-        reverseNat.put(SimpleSocketAddress.from(packet.source()), packet.destination());
+        reverseNat.put(SimpleSocketAddress.from(packet.source()), new InetSocketAddressWithUdpFlowExtension(packet.destination(), packet.flow()));
         queue.add(new PlayitDatagramPacket(packet.contents(), System.currentTimeMillis(), packet.source()));
     }
 

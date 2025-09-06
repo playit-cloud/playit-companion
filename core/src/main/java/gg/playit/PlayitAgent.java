@@ -390,7 +390,8 @@ public class PlayitAgent implements Closeable {
                                 new PlayitAgentVersion(
                                         new AgentVersion("minecraft-plugin", platform.getVersion(), false),
                                         true,
-                                        null),
+                                        null,
+                                        2),
                                 pong.client_addr().toString(),
                                 pong.tunnel_addr().toString()
                         ));
@@ -450,7 +451,7 @@ public class PlayitAgent implements Closeable {
                 } else {
                     logger.error("Unhandled response type!");
                 }
-            } else if (parsed instanceof NewClient newClient) {
+            } else if (parsed instanceof AbstractNewClient newClient) {
                 Bootstrap b = new Bootstrap();
                 b.group(group);
                 b.channel(epoll ? EpollSocketChannel.class : NioSocketChannel.class);
@@ -462,7 +463,7 @@ public class PlayitAgent implements Closeable {
                         buf.writeBytes(token);
                         ctx.channel().writeAndFlush(buf);
                         for (AgentTunnel tunnel : cachedRundata.tunnels) {
-                            if (tunnel.matches(newClient.connect_addr().address())) {
+                            if (newClient.matches(tunnel)) {
                                 var socketLayer = getSocketLayer(tunnel);
                                 if (socketLayer != null) {
                                     socketLayer.receivedConnection(newClient.connect_addr().address(), newClient.peer_addr().address(), (SocketChannel) ctx.channel());
@@ -575,7 +576,55 @@ public class PlayitAgent implements Closeable {
                 if (footer == 0xd01fe6830ddce781L) {
                     lastEstablish = System.nanoTime();
                     return;
-                } else if (footer == 0x5cb867cf788173b2L || footer == 0x4448474f48414344L) {
+                } else if (footer == 0x5cb867cf78817399L) {
+                    var allExceptFooterAndPacketId = allExceptFooter.readBytes(allExceptFooter.readableBytes() - 2);
+                    var packetId = allExceptFooterAndPacketId.readUnsignedShort();
+                    byte[] contents;
+                    if (packetId == 0) {
+                        contents = new byte[allExceptFooterAndPacketId.readableBytes() - 30];
+                    } else {
+                        contents = new byte[allExceptFooterAndPacketId.readableBytes() - 33];
+                    }
+                    allExceptFooterAndPacketId.readBytes(contents);
+                    var srcIp = new byte[4];
+                    var dstIp = new byte[4];
+                    allExceptFooterAndPacketId.readBytes(srcIp);
+                    allExceptFooterAndPacketId.readBytes(dstIp);
+                    var srcPort = allExceptFooterAndPacketId.readUnsignedShort();
+                    var dstPort = allExceptFooterAndPacketId.readUnsignedShort();
+                    var src = new InetSocketAddress(Inet4Address.getByAddress(srcIp), srcPort);
+                    var dst = new InetSocketAddress(Inet4Address.getByAddress(dstIp), dstPort);
+
+                    var clientServerId = allExceptFooterAndPacketId.readLong();
+                    var tunnelId = allExceptFooterAndPacketId.readLong();
+                    var portOffset = allExceptFooterAndPacketId.readUnsignedShort();
+                    var flow = new UdpFlowExtension(clientServerId, tunnelId, portOffset);
+
+                    if (packetId != 0) {
+                        var hasMore = allExceptFooterAndPacketId.readUnsignedByte() != 0;
+                        var fragOffset = allExceptFooterAndPacketId.readUnsignedShort();
+                    }
+
+                    packet = new RoutableDatagramPacket(flow, src, dst, contents);
+                } else if (footer == 0x6cb667cf78817369L) {
+                    var contents = new byte[allExceptFooter.readableBytes() - 54];
+                    allExceptFooter.readBytes(contents);
+                    var srcIp = new byte[16];
+                    var dstIp = new byte[16];
+                    allExceptFooter.readBytes(srcIp);
+                    allExceptFooter.readBytes(dstIp);
+                    var srcPort = allExceptFooter.readUnsignedShort();
+                    var dstPort = allExceptFooter.readUnsignedShort();
+                    var src = new InetSocketAddress(Inet6Address.getByAddress(srcIp), srcPort);
+                    var dst = new InetSocketAddress(Inet6Address.getByAddress(dstIp), dstPort);
+
+                    var clientServerId = allExceptFooter.readLong();
+                    var tunnelId = allExceptFooter.readLong();
+                    var portOffset = allExceptFooter.readUnsignedShort();
+                    var flow = new UdpFlowExtension(clientServerId, tunnelId, portOffset);
+
+                    packet = new RoutableDatagramPacket(flow, src, dst, contents);
+                } else if (footer == 0x5cb867cf788173b2L) {
                     var contents = new byte[allExceptFooter.readableBytes() - 12];
                     allExceptFooter.readBytes(contents);
                     var srcIp = new byte[4];
@@ -586,7 +635,7 @@ public class PlayitAgent implements Closeable {
                     var dstPort = allExceptFooter.readUnsignedShort();
                     var src = new InetSocketAddress(Inet4Address.getByAddress(srcIp), srcPort);
                     var dst = new InetSocketAddress(Inet4Address.getByAddress(dstIp), dstPort);
-                    packet = new RoutableDatagramPacket(src, dst, contents);
+                    packet = new RoutableDatagramPacket(null, src, dst, contents);
                 } else if (footer == 0x6668676f68616366L) {
                     var contents = new byte[allExceptFooter.readableBytes() - 40];
                     allExceptFooter.readBytes(contents);
@@ -598,13 +647,13 @@ public class PlayitAgent implements Closeable {
                     var dstPort = allExceptFooter.readUnsignedShort();
                     var src = new InetSocketAddress(Inet6Address.getByAddress(srcIp), srcPort);
                     var dst = new InetSocketAddress(Inet6Address.getByAddress(dstIp), dstPort);
-                    packet = new RoutableDatagramPacket(src, dst, contents);
+                    packet = new RoutableDatagramPacket(null, src, dst, contents);
                 } else {
                     logger.warn("Bad UDP footer, discarding!");
                     return;
                 }
                 for (AgentTunnel tunnel : cachedRundata.tunnels) {
-                    if (tunnel.matches(packet.destination())) {
+                    if (packet.matches(tunnel)) {
                         var datagramLayer = getDatagramLayer(tunnel);
                         if (datagramLayer != null) {
                             datagramLayer.receivedPacket(packet);
@@ -629,18 +678,41 @@ public class PlayitAgent implements Closeable {
                     var buffer = ch.alloc().buffer(packet.contents().length + 48);
                     buffer.writeBytes(packet.contents());
                     if (packet.source().getAddress() instanceof Inet4Address sourceAddress && packet.destination().getAddress() instanceof Inet4Address destinationAddress) {
-                        buffer.writeBytes(sourceAddress.getAddress());
-                        buffer.writeBytes(destinationAddress.getAddress());
-                        buffer.writeShort(packet.source().getPort());
-                        buffer.writeShort(packet.destination().getPort());
-                        buffer.writeLong(0x5cb867cf788173b2L);
+                        if (packet.flow() == null) {
+                            buffer.writeBytes(sourceAddress.getAddress());
+                            buffer.writeBytes(destinationAddress.getAddress());
+                            buffer.writeShort(packet.source().getPort());
+                            buffer.writeShort(packet.destination().getPort());
+                            buffer.writeLong(0x5cb867cf788173b2L);
+                        } else {
+                            buffer.writeBytes(sourceAddress.getAddress());
+                            buffer.writeBytes(destinationAddress.getAddress());
+                            buffer.writeShort(packet.source().getPort());
+                            buffer.writeShort(packet.destination().getPort());
+                            buffer.writeLong(packet.flow().client_server_id());
+                            buffer.writeLong(packet.flow().tunnel_id());
+                            buffer.writeShort(packet.flow().port_offset());
+                            buffer.writeShort(0);
+                            buffer.writeLong(0x5cb867cf78817399L);
+                        }
                     } else if (packet.source().getAddress() instanceof Inet6Address sourceAddress && packet.destination().getAddress() instanceof Inet6Address destinationAddress) {
-                        buffer.writeBytes(sourceAddress.getAddress());
-                        buffer.writeBytes(destinationAddress.getAddress());
-                        buffer.writeShort(packet.source().getPort());
-                        buffer.writeShort(packet.destination().getPort());
-                        buffer.writeInt(0);
-                        buffer.writeLong(0x6668676f68616366L);
+                        if (packet.flow() == null) {
+                            buffer.writeBytes(sourceAddress.getAddress());
+                            buffer.writeBytes(destinationAddress.getAddress());
+                            buffer.writeShort(packet.source().getPort());
+                            buffer.writeShort(packet.destination().getPort());
+                            buffer.writeInt(0);
+                            buffer.writeLong(0x6668676f68616366L);
+                        } else {
+                            buffer.writeBytes(sourceAddress.getAddress());
+                            buffer.writeBytes(destinationAddress.getAddress());
+                            buffer.writeShort(packet.source().getPort());
+                            buffer.writeShort(packet.destination().getPort());
+                            buffer.writeLong(packet.flow().client_server_id());
+                            buffer.writeLong(packet.flow().tunnel_id());
+                            buffer.writeShort(packet.flow().port_offset());
+                            buffer.writeLong(0x6cb667cf78817369L);
+                        }
                     } else {
                         throw new InvalidParameterException("Bad address family for routing!");
                     }

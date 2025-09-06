@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
 
-public sealed interface WireReadable permits ControlRpcResponse, NewClient {
+public sealed interface WireReadable permits ControlRpcResponse, NewClient, NewClientOld {
     static WireReadable from(ByteBuf buffer) throws IOException {
         return switch (buffer.readInt()) {
             case 1 -> ControlRpcResponse.from(buffer);

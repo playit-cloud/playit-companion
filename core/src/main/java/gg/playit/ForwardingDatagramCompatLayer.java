@@ -19,7 +19,7 @@ public class ForwardingDatagramCompatLayer implements DatagramCompatLayer {
     private final PlayitAgent agent;
     private Consumer<RoutableDatagramPacket> packetSender;
 
-    private HashMap<SimpleSocketAddressPair, DatagramChannel> natTable;
+    private final HashMap<SimpleSocketAddressPair, DatagramChannel> natTable = new HashMap<>();
 
     public ForwardingDatagramCompatLayer(String id, InetSocketAddress targetAddress, PlayitAgent agent) {
         this.id = id;
@@ -41,6 +41,7 @@ public class ForwardingDatagramCompatLayer implements DatagramCompatLayer {
             buf.writeBytes(packet.contents());
             conn.writeAndFlush(new DatagramPacket(buf, targetAddress));
         } else {
+            var flow = packet.flow();
             var from = packet.destination();
             var to = packet.source();
             var fut = new Bootstrap()
@@ -52,7 +53,7 @@ public class ForwardingDatagramCompatLayer implements DatagramCompatLayer {
                             if (msg.sender().equals(targetAddress)) {
                                 var buf = new byte[msg.content().readableBytes()];
                                 msg.content().readBytes(buf);
-                                var packet = new RoutableDatagramPacket(from, to, buf);
+                                var packet = new RoutableDatagramPacket(flow, from, to, buf);
                                 packetSender.accept(packet);
                             }
                         }
