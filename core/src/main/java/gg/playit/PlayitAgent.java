@@ -388,10 +388,13 @@ public class PlayitAgent implements Closeable {
                         establishReattemptTimeout.cancel();
                         var registerResp = apiClient.protoRegister(new ProtoRegisterRequest(
                                 new PlayitAgentVersion(
-                                        new AgentVersion("minecraft-plugin", platform.getVersion(), false),
-                                        true,
-                                        null,
-                                        2),
+                                        "fe4b4acd-19a7-45a8-9f31-c88cb9969855",
+                                        0,
+                                        1,
+                                        0
+                                ),
+                                2,
+                                "minecraft-plugin",
                                 pong.client_addr().toString(),
                                 pong.tunnel_addr().toString()
                         ));

@@ -1,4 +1,4 @@
 package gg.playit.proto.rest;
 
-public record ProtoRegisterRequest(PlayitAgentVersion agent_version, String client_addr, String tunnel_addr) {
+public record ProtoRegisterRequest(PlayitAgentVersion version, long proto_version, String platform, String client_addr, String tunnel_addr) {
 }

@@ -1,4 +1,4 @@
 package gg.playit.proto.rest;
 
-public record PlayitAgentVersion(AgentVersion version, boolean official, String details_website, long proto_version) {
+public record PlayitAgentVersion(String variant_id, long version_major, long version_minor, long version_patch) {
 }
