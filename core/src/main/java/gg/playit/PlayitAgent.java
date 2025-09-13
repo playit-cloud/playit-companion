@@ -65,6 +65,7 @@ public class PlayitAgent implements Closeable {
     private AgentRundataResponse cachedRundata;
 
     private final HashMap<String, CompatLayer> compatLayerOverlay = new HashMap<>();
+    private String lastDomain;
 
     public PlayitAgent(Platform platform) {
         this.platform = platform;
@@ -218,23 +219,52 @@ public class PlayitAgent implements Closeable {
         } catch (IOException e) {
             logger.warn("Failed to write agent key to file", e);
         }
+        claimCode = null;
+        return ClaimStep.Accepted;
+    }
+
+    private boolean anyMatch(List<AgentTunnel> tunnels, CompatLayer compatLayer) {
+        String tunnelType;
+        if (compatLayer instanceof SocketCompatLayer) {
+            tunnelType = "tcp";
+        } else {
+            tunnelType = "udp";
+        }
+        for (AgentTunnel tunnel : tunnels) {
+            if (!(tunnel.proto.equals(tunnelType) || tunnel.proto.equals("both"))) {
+                continue;
+            }
+            if (tunnel.tunnel_type.equals(compatLayer.protocolName()) || tunnel.name.equals(compatLayer.protocolName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void setupTunnels() throws IOException, InterruptedException {
         var rundataResp = apiClient.agentsRundata();
         if (!(rundataResp instanceof AgentRundataResponse))
             throw new IOException("rundata error: " + rundataResp.toString());
         var id = ((AgentRundataResponse) rundataResp).agent_id;
-        var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
-                "Minecraft Java",
-                "minecraft-java",
-                "tcp",
-                1,
-                new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
-                true,
-                new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
-        ));
-        if (!(tunnelResp instanceof TunnelsCreateResponse))
-            throw new IOException("tunnel creation error: " + tunnelResp.toString());
+        var tunnels = ((AgentRundataResponse) rundataResp).tunnels;
+        if (tunnels.stream().noneMatch(e -> e.tunnel_type.equals("minecraft-java"))) {
+            var tunnelResp = apiClient.tunnelsCreate(new TunnelsCreateRequest(
+                    "Minecraft Java",
+                    "minecraft-java",
+                    "tcp",
+                    1,
+                    new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
+                    true,
+                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+            ));
+            if (!(tunnelResp instanceof TunnelsCreateResponse))
+                throw new IOException("tunnel creation error: " + tunnelResp.toString());
+        }
         for (CompatLayer compatLayer : compatLayers.values()) {
             if (compatLayerOverlay.containsKey(compatLayer.protocolName())) {
+                continue;
+            }
+            if (anyMatch(tunnels, compatLayer)) {
                 continue;
             }
             String tunnelType;
@@ -256,6 +286,9 @@ public class PlayitAgent implements Closeable {
                 throw new IOException("tunnel creation error for compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
         }
         for (CompatLayer compatLayer : compatLayerOverlay.values()) {
+            if (anyMatch(tunnels, compatLayer)) {
+                continue;
+            }
             String tunnelType;
             if (compatLayer instanceof SocketCompatLayer) {
                 tunnelType = "tcp";
@@ -275,26 +308,19 @@ public class PlayitAgent implements Closeable {
             ));
             if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
                 throw new IOException("tunnel creation error for configured compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
+            var newRundataResp = apiClient.agentsRundata();
+            if (!(newRundataResp instanceof AgentRundataResponse))
+                throw new IOException("rundata error: " + newRundataResp.toString());
+            cachedRundata = (AgentRundataResponse) newRundataResp;
         }
-        claimCode = null;
-        return ClaimStep.Accepted;
     }
 
     public void run() throws IOException, InterruptedException {
-        if (cachedRundata == null) {
-            var rundataResp = apiClient.agentsRundata();
-            if (!(rundataResp instanceof AgentRundataResponse))
-                throw new IOException("rundata error: " + rundataResp.toString());
-            cachedRundata = (AgentRundataResponse) rundataResp;
+        var rundataResp = apiClient.agentsRundata();
+        if (!(rundataResp instanceof AgentRundataResponse)) {
+            throw new IOException("Error getting agent data: " + rundataResp.toString());
         }
-        for (AgentTunnel tunnel : cachedRundata.tunnels) {
-            if ("minecraft-java".equals(tunnel.tunnel_type)) {
-                var domain = tunnel.custom_domain;
-                if (domain == null)
-                    domain = tunnel.assigned_domain;
-                platform.tunnelAddressInformation(domain);
-            }
-        }
+        cachedRundata = (AgentRundataResponse) rundataResp;
         var resp = apiClient.agentsRoutingGet();
         if (!(resp instanceof AgentRoutingGetResponse))
             throw new IOException("agent routing error: " + resp.toString());
@@ -410,6 +436,7 @@ public class PlayitAgent implements Closeable {
                         pendingRequests.add(lastRequestId);
                         keyBuffer.writeBytes(authKey);
                         ch.writeAndFlush(new DatagramPacket(keyBuffer, addresses.get(currentTargetAddress)));
+                        setupTunnels();
                     }
                 } else if (rpcResponse.content() instanceof RequestQueuedControlResponse) {
                     timer.newTimeout(timeout -> {
@@ -523,6 +550,15 @@ public class PlayitAgent implements Closeable {
             for (AgentTunnel tunnel : cachedRundata.tunnels) {
                 if (tunnel.proto.equals("udp"))
                     continue;
+                if ("minecraft-java".equals(tunnel.tunnel_type)) {
+                    var domain = tunnel.custom_domain;
+                    if (domain == null)
+                        domain = tunnel.assigned_domain;
+                    if (lastDomain == null) {
+                        platform.tunnelAddressInformation(domain);
+                        lastDomain = domain;
+                    }
+                }
                 var socketLayer = getSocketLayer(tunnel);
                 if (socketLayer != null) {
                     socketLayer.tunnelUpdated(tunnel);
@@ -536,6 +572,15 @@ public class PlayitAgent implements Closeable {
                     throw new IOException("rundata error: " + rundataResp.toString());
                 if (!rundataResp.equals(cachedRundata)) {
                     for (AgentTunnel tunnel : ((AgentRundataResponse) rundataResp).tunnels) {
+                        if ("minecraft-java".equals(tunnel.tunnel_type)) {
+                            var domain = tunnel.custom_domain;
+                            if (domain == null)
+                                domain = tunnel.assigned_domain;
+                            if (lastDomain == null) {
+                                platform.tunnelAddressInformation(domain);
+                                lastDomain = domain;
+                            }
+                        }
                         if (!tunnel.proto.equals("tcp")) {
                             var datagramLayer = getDatagramLayer(tunnel);
                             if (datagramLayer != null) {
