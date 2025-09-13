@@ -389,7 +389,7 @@ public class QDCSS {
     }
 
     private static final Pattern JUNK_PATTERN = Pattern.compile("^(\\s*(/\\*.*?\\*/)?\\s*)*$", Pattern.DOTALL);
-    private static final Pattern RULESET_PATTERN = Pattern.compile("[#.]?(\\w+?)\\s*\\{(.*?)\\}", Pattern.DOTALL);
+    private static final Pattern RULESET_PATTERN = Pattern.compile("[#.]?([\\w-]+?)\\s*\\{(.*?)\\}", Pattern.DOTALL);
     private static final Pattern RULE_PATTERN = Pattern.compile("(\\S+?)\\s*:\\s*(\\S+?)\\s*(;|$)");
 
     public static QDCSS load(String fileName, String s) throws SyntaxErrorException {
