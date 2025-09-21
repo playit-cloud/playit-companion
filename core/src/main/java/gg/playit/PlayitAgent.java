@@ -65,6 +65,7 @@ public class PlayitAgent implements Closeable {
     private AgentRundataResponse cachedRundata;
 
     private final HashMap<String, CompatLayer> compatLayerOverlay = new HashMap<>();
+    private final HashMap<String, TunnelCreateUseAllocation> allocs = new HashMap<>();
     private String lastDomain;
 
     public PlayitAgent(Platform platform) {
@@ -139,6 +140,28 @@ public class PlayitAgent implements Closeable {
                             }
                         } catch (QDCSS.BadValueException | UnknownHostException e) {
                             logger.error("Error parsing config for tunnel {}", tunnel, e);
+                        }
+                    } else if (key.endsWith(".alloc")) {
+                        var tunnel = key.substring(0, key.length() - 6);
+                        var value = config.get(key).get();
+                        if (value.contains(":")) {
+                            var parts = value.split(":");
+                            if (parts.length != 2) {
+                                logger.error("Invalid allocation config {}: wrong amount of parts", key);
+                                continue;
+                            }
+                            try {
+                                var port = Integer.parseInt(parts[1]);
+                                if (port < 0 || port > 65535) {
+                                    logger.error("Invalid allocation config {}: invalid port number", key);
+                                    continue;
+                                }
+                                allocs.put(tunnel, new TunnelCreateUseAllocation("dedicated-ip", new TunnelCreateUseAllocationDedicatedIp(parts[0], port)));
+                            } catch (NumberFormatException e) {
+                                logger.error("Error parsing config for tunnel {}", tunnel, e);
+                            }
+                        } else {
+                            allocs.put(tunnel, new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion(value)));
                         }
                     }
                 }
@@ -241,6 +264,10 @@ public class PlayitAgent implements Closeable {
         return false;
     }
 
+    private TunnelCreateUseAllocation getAlloc(String protocol) {
+        return allocs.getOrDefault(protocol, new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global")));
+    }
+
     private void setupTunnels() throws IOException, InterruptedException {
         var rundataResp = apiClient.agentsRundata();
         if (!(rundataResp instanceof AgentRundataResponse))
@@ -255,7 +282,7 @@ public class PlayitAgent implements Closeable {
                     1,
                     new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
                     true,
-                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+                    getAlloc("minecraft-java")
             ));
             if (!(tunnelResp instanceof TunnelsCreateResponse))
                 throw new IOException("tunnel creation error: " + tunnelResp.toString());
@@ -280,7 +307,7 @@ public class PlayitAgent implements Closeable {
                     1,
                     new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
                     true,
-                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+                    getAlloc(compatLayer.protocolName())
             ));
             if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
                 throw new IOException("tunnel creation error for compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
@@ -304,7 +331,7 @@ public class PlayitAgent implements Closeable {
                     1,
                     new TunnelOriginCreate("managed", new TunnelOriginCreateManaged(id)),
                     true,
-                    new TunnelCreateUseAllocation("region", new TunnelCreateUseAllocationRegion("global"))
+                    getAlloc(compatLayer.protocolName())
             ));
             if (!(tunnelLayerResp instanceof TunnelsCreateResponse))
                 throw new IOException("tunnel creation error for configured compat layer " + compatLayer.protocolName() + ": " + tunnelLayerResp.toString());
