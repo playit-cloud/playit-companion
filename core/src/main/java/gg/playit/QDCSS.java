@@ -388,47 +388,85 @@ public class QDCSS {
         };
     }
 
-    private static final Pattern JUNK_PATTERN = Pattern.compile("^(\\s*(/\\*.*?\\*/)?\\s*)*$", Pattern.DOTALL);
-    private static final Pattern RULESET_PATTERN = Pattern.compile("[#.]?([\\w-]+?)\\s*\\{(.*?)\\}", Pattern.DOTALL);
-    private static final Pattern RULE_PATTERN = Pattern.compile("(\\S+?)\\s*:\\s*(\\S+?)\\s*(;|$)");
+    private static final Pattern SPECIFIER_PATTERN = Pattern.compile("^[#.]?([a-zA-Z_][a-zA-Z0-9_-]*)", Pattern.DOTALL);
+    private static final Pattern IDENT_PATTERN = Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_-]*)", Pattern.DOTALL);
+    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("^[\\r\\n\\t ]+", Pattern.DOTALL);
 
     public static QDCSS load(String fileName, String s) throws SyntaxErrorException {
-        // vanilla CSS is a very simple grammar, so we can parse it using only regexes
         Map<String, List<BlameString>> data = new LinkedHashMap<>();
-        Matcher ruleset = RULESET_PATTERN.matcher(s);
-        int lastEnd = 0;
-        while (ruleset.find()) {
-            String skipped = s.substring(lastEnd, ruleset.start());
-            if (!JUNK_PATTERN.matcher(skipped).matches()) {
-                throw new SyntaxErrorException("Expected a ruleset near line "+getLine(s, ruleset.start())+" in "+fileName);
-            }
-            String selector = ruleset.group(1);
-            String rules = ruleset.group(2);
-            Matcher rule = RULE_PATTERN.matcher(rules);
-            int lastRulesEnd = 0;
-            while (rule.find()) {
-                String skippedRule = rules.substring(lastRulesEnd, rule.start());
-                if (!JUNK_PATTERN.matcher(skippedRule).matches()) {
-                    throw new SyntaxErrorException("Expected a rule near line "+getLine(s, ruleset.start(2)+rule.start())+" in "+fileName);
+        String currentSpecifier = null;
+        boolean begunRuleset = false;
+        String currentRuleName = null;
+        boolean begunValue = false;
+        int cursor = 0;
+        while (cursor < s.length()) {
+            String sub = s.substring(cursor);
+            // Consume comments
+            if (sub.startsWith("/*")) {
+                cursor += 2;
+                sub = sub.substring(2);
+                int idx = sub.indexOf("*/");
+                if (idx == -1) {
+                    break;
                 }
-                String property = rule.group(1);
-                String value = rule.group(2);
-                String key = selector+"."+property;
-                if (!data.containsKey(key)) {
-                    data.put(key, new ArrayList<>());
+                cursor += idx + 2;
+                continue;
+            }
+            // Consume whitespace
+            Matcher whitespace = WHITESPACE_PATTERN.matcher(sub);
+            if (whitespace.find()) {
+                cursor += whitespace.end();
+                continue;
+            }
+            if (currentSpecifier == null) {
+                Matcher specifier = SPECIFIER_PATTERN.matcher(sub);
+                if (specifier.find()) {
+                    currentSpecifier = specifier.group(1);
+                    cursor += specifier.end();
+                    begunRuleset = false;
                 }
-                data.get(key).add(new BlameString(value, fileName, getLine(s, ruleset.start(2)+rule.start())));
-                lastRulesEnd = rule.end();
+            } else if (!begunRuleset) {
+                if (sub.startsWith("{")) {
+                    cursor += 1;
+                    begunRuleset = true;
+                } else {
+                    throw new SyntaxErrorException("Expected an opening bracket near line " + getLine(s, cursor) + " in " + fileName);
+                }
+            } else {
+                if (currentRuleName == null) {
+                    if (sub.startsWith("}")) {
+                        cursor += 1;
+                        currentSpecifier = null;
+                        continue;
+                    }
+                    Matcher ident = IDENT_PATTERN.matcher(sub);
+                    if (ident.find()) {
+                        currentRuleName = ident.group(1);
+                        cursor += ident.end();
+                        begunValue = false;
+                    }
+                } else if (!begunValue) {
+                    if (sub.startsWith(":")) {
+                        cursor += 1;
+                        begunValue = true;
+                    } else {
+                        throw new SyntaxErrorException("Expected a colon near line " + getLine(s, cursor) + " in " + fileName);
+                    }
+                } else {
+                    int end = sub.indexOf(";");
+                    if (end == -1) {
+                        throw new SyntaxErrorException("Unexpected EOF during rule parse in " + fileName);
+                    }
+                    String value = sub.substring(0, end).stripTrailing();
+                    String key = currentSpecifier + "." + currentRuleName;
+                    if (!data.containsKey(key)) {
+                        data.put(key, new ArrayList<>());
+                    }
+                    data.get(key).add(new BlameString(value, fileName, getLine(s, cursor)));
+                    cursor += end + 1;
+                    currentRuleName = null;
+                }
             }
-            String skippedRule = rules.substring(lastRulesEnd);
-            if (!JUNK_PATTERN.matcher(skippedRule).matches()) {
-                throw new SyntaxErrorException("Expected a rule near line "+getLine(s, ruleset.start(2)+lastRulesEnd)+" in "+fileName);
-            }
-            lastEnd = ruleset.end();
-        }
-        String skipped = s.substring(lastEnd);
-        if (!JUNK_PATTERN.matcher(skipped).matches()) {
-            throw new SyntaxErrorException("Expected a ruleset or EOF near line "+getLine(s, lastEnd)+" in "+fileName);
         }
         return new QDCSS(fileName, data);
     }
