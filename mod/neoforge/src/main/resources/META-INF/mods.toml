@@ -9,7 +9,7 @@ displayName = "Playit Companion"
 credits = "skyevg"
 authors = "skyevg"
 description = '''
-PRIVATE BETA - The new Playit Plugin
+A Minecraft plugin and mod for playit.gg
 '''
 
 [[mixins]]

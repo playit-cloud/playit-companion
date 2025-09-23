@@ -3,7 +3,7 @@
   "id": "playit_companion",
   "version": "${version}",
   "name": "Playit Companion",
-  "description": "PRIVATE BETA - The new Playit Plugin",
+  "description": "A Minecraft plugin and mod for playit.gg",
   "authors": [
     "skyevg"
   ],
