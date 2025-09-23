@@ -5,10 +5,17 @@ plugins {
     id("xyz.jpenilla.run-paper") version "2.3.1"
     id 'java'
     id 'com.gradleup.shadow' version '8.3.6'
+    id "com.modrinth.minotaur" version "2.+"
+    id("io.papermc.hangar-publish-plugin") version "0.1.2"
+    id 'maven-publish'
 }
 
 group = 'gg.playit'
 version = rootProject.version
+
+base {
+    archivesName = project.archives_base_name + "-" + project.name
+}
 
 repositories {
     repositories {
@@ -52,4 +59,42 @@ tasks.shadowJar {
     manifest {
         attributes["paperweight-mappings-namespace"] = "mojang"
     }
+}
+
+publishing {
+    publications {
+        mavenPaper(MavenPublication) {
+            artifactId = archives_base_name + "-" + project.name
+            from components.java
+        }
+    }
+
+    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+    repositories {
+        // Add repositories to publish to here.
+        maven {
+            url "https://sg.storage.bunnycdn.com/skyeven"
+            credentials(HttpHeaderCredentials) {
+                name = "AccessKey"
+                value = property("skyevenToken")
+            }
+            authentication {
+                header(HttpHeaderAuthentication)
+            }
+        }
+    }
+}
+
+modrinth {
+    token = project.modrinthApiToken
+    projectId = project.modrinthId
+    versionName = "[Paper] $project.version"
+    versionNumber = project.version + "-paper"
+    versionType = "release"
+    uploadFile = shadowJar
+    gameVersions = [
+        "1.20.5", "1.20.6",
+        "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.7", "1.21.8"
+    ]
+    loaders = ["paper"]
 }
