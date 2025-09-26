@@ -168,6 +168,7 @@ public class PlayitAgent implements Closeable {
             } else {
                 var template = PlayitAgent.class.getResource("/config-template.css");
                 try (var stream = template.openStream()) {
+                    Files.createDirectories(path.getParent());
                     Files.writeString(path, new String(stream.readAllBytes(), StandardCharsets.UTF_8), StandardCharsets.UTF_8);
                 }
             }

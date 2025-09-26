@@ -101,6 +101,7 @@ public class PlayitMod {
 
         if (agent.getClaimCode() != null) {
             var url = "https://playit.gg/claim/" + agent.getClaimCode();
+            LOGGER.info(url);
             var urlComponent = VersionArbitrage.withStyle(
                     VersionArbitrage.literal(url),style -> style
                             .withClickEvent(VersionArbitrage.openUrl(url))
