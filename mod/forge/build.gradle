@@ -10,7 +10,7 @@ architectury {
 
 loom {
     forge {
-        mixinConfig "e4mc_minecraft.mixins.json"
+        mixinConfig "playit-companion.mixins.json"
     }
 }
 
